@@ -1,10 +1,30 @@
 #!/usr/bin/env bash
+# Usage: start_robot129_ros_webrtc.sh [--scene marker|pick_place|pick_place_hammer]
+# Defaults to marker (sim/scripts/run_robot129_ros_webrtc.py's own default) if omitted.
+#
+# Bug fixed 2026-09-20: this script used to take no arguments at all and silently
+# ignore anything passed to it (including --scene), always launching the python
+# script's "marker" default -- a scene with a purely visual red marker and no
+# graspable physics object. Nobody hit this until today, because every prior real
+# grasp-motion PASS was run against start_robot129_grasp_sim.sh (headless), which
+# already forwarded "$@" correctly; two live-WebRTC executions via this script both
+# failed physical_grasp_success even though MTC planning and the joint trajectory
+# both reported success, because /robot129_sim/objects/target_cube/pose never
+# existed to report a rest pose from -- the marker scene has no such object.
 set -euo pipefail
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 isaac=/mnt/HDD4/wyattsheu/IsaacLab
 rosroot="$isaac/.venv/lib/python3.12/site-packages/isaacsim/exts/isaacsim.ros2.core/jazzy"
 state="$root/out/ros_webrtc_robot129"
 mkdir -p "$state"
+
+scene="marker"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --scene) scene="$2"; shift 2 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
 
 if [[ -f "$state/server.pid" ]] && kill -0 "$(cat "$state/server.pid")" 2>/dev/null; then
   echo "Robot 129 ROS WebRTC 已在執行，PID=$(cat "$state/server.pid")"
@@ -34,7 +54,7 @@ export LD_PRELOAD="$isaac/.venv/lib/python3.12/site-packages/nvidia/cuda_runtime
 : > "$state/server.log"
 cd "$isaac"
 nohup setsid uv run --no-sync python "$root/sim/scripts/run_robot129_ros_webrtc.py" \
-  --bundle "$root" --device cuda:0 --livestream 2 --warmup-frames 90 \
+  --bundle "$root" --device cuda:0 --livestream 2 --warmup-frames 90 --scene "$scene" \
   --kit_args "--/app/window/width=1280 --/app/window/height=720 --/exts/omni.kit.livestream.app/primaryStream/targetFps=30 --/exts/omni.kit.livestream.app/primaryStream/publicIp=$public_ip --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=false --/rtx/hydra/readTransformsFromFabricInRenderDelegate=0 --/renderer/multiGpu/enabled=false" \
   > "$state/server.log" 2>&1 &
 pid=$!

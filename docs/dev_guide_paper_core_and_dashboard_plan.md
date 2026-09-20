@@ -1,7 +1,11 @@
 # 開發指南：論文核心程式碼地圖 + Dashboard / WebRTC / 場景切換開發方向
 
 寫給：Wyatt（要開始做更深入的開發工作，只想碰論文核心邏輯，不想深入 ROS/硬體細節）
-用途：(1) 告訴你哪些檔案是論文相關、哪些是純基礎設施只要會呼叫就好 (2) 三個新開發項目（web dashboard、WebRTC 穩定化、場景/物體切換規範）的架構提案，還沒開始寫
+用途：(1) 告訴你哪些檔案是論文相關、哪些是純基礎設施只要會呼叫就好 (2) 三個新開發項目（dashboard-lite、WebRTC 穩定化、場景/物體切換規範）的架構提案與目前實作進度
+
+**這份文件會持續更新**——你說要一直看它，之後每輪開發進度都會寫回這裡，不是寫一次就丟著。
+
+**這個 repo 現在也在 GitHub 上**：https://github.com/wyattsheu/vlm-grasp-arm-sim（private）。push 上去的範圍見 `README.md` 最後一節「2026-09-20：這個 repo 實際 push 到 GitHub 的範圍」——只有原始碼/文件，`out/`、build 產物、`deployment/`（含真實 Thor 主機連線資訊）都刻意排除。之後有新進度，`git add` 對應檔案、`git commit`、`git push` 就會同步上去，我不會自動幫你 push，除非你要求。
 
 ---
 
@@ -99,7 +103,56 @@ sim/scripts/run_robot129_ros_webrtc.py   # Isaac 場景本體（spawn 物體、�
 
 ---
 
-## 3. Web Dashboard 開發方向
+## 3. Dashboard-lite — 已實作，非即時網頁版
+
+你把需求簡化成「每次 run 記錄相機影片 + VLM 框框（含時間/物件等細節）+ 候選虛影，越簡單越好」——這比原本 §3 設計的即時網頁監控面板單純很多，所以直接做完了，不是提案。**沒有網頁、沒有 server、沒有 WebSocket**，就是幾張存檔的圖片。
+
+### 3.1 新增的程式碼
+
+```
+research/src/mpg/lifting.py
+  def project_point(point_xyz_cam, k_matrix) -> (x_px, y_px)
+    # deproject() 的反函式：3D 相機座標點 -> 2D 像素，畫「虛影」要用的投影數學
+
+research/src/mpg/viz.py
+  def render_affordance_overlay(image, region, *, caption_lines=())
+    # VLM affordance 框框疊圖：橘色 bbox + 中心點 + 下方文字條（時間/物件/instruction/status）
+    # UNAVAILABLE 時不畫框（沒有東西可畫），但文字條會誠實列出原因
+  def render_candidate_ghosts(image, candidates, *, k_matrix, t_camera_world, chosen_id=None, caption_lines=())
+    # 這就是你說的「虛影」：把每個候選的夾爪開合軸投影回相機影像，畫成一條線
+    # 綠色實線=選中、灰色虛線=可行但沒選、紅色虛線=被拒絕
+    # 小物體從正上方看，候選間距通常只有幾個像素，所以線段長度做了「視覺誇大」
+    # （保留真實中心點與角度，長度不代表真實開合寬度，caption 裡有講明），
+    # 每個候選只在圖上標一個數字索引，完整 id/score/狀態列在下方文字條
+
+research/scripts/render_run_dashboard.py   # 新腳本，把上面兩個疊圖函式串起來
+  用法：
+  python research/scripts/render_run_dashboard.py \
+      --scene-bundle <擷取的 scene bundle 目錄，含 rgb.png/tf.json/camera_info.json> \
+      --affordance-json <run_grasp_affordance 存的 AffordanceRegion JSON> \
+      --candidates-json <grasp_contract 格式的候選 JSON> \
+      --chosen-id <選中的 candidate_id> \
+      --object-id <物件名稱，純標記用> \
+      --out-dir <輸出資料夾>
+  產出：vlm_overlay.png（VLM 框框+caption）、candidates_ghost.png（候選虛影+caption）、summary.json
+  影片：若有錄影（--video 指向 video.mp4），直接複製一份進 out-dir，不重新編碼
+```
+
+### 3.2 已用真實資料驗證過
+
+拿 S4 真實跑（腕上相機真實擷取 + 真實本地 VLM）留下的 `research/data/scenes/s4_live_wrist_capture_01`（rgb/tf/camera_info）+ `out/grasp_motion/s4_live_test/affordance_region.json` + `s4_live_candidates.json` 跑過一次，兩張圖都正確：affordance 疊圖的框框準確落在方塊上；候選虛影圖裡 8 個候選繞著方塊中心呈放射狀排列，選中的 G000 是綠色實線，其餘依 accepted/rejected 分別是灰色/紅色虛線，下方文字條列出每個候選的完整 id/score/狀態。173 個既有測試（含新增的 12 個 viz 測試 + 2 個 project_point 測試）全數通過。
+
+### 3.3 怎麼接進實際的 run（下一步，還沒做）
+
+現在這個腳本是「手動指定三個檔案路徑」，還沒接進 `tools/run_grasp_motion_demo.sh` 自動觸發。要自動化的話：
+1. `run_grasp_motion_demo.sh` 執行完之後，已經有 `plan.json`（含候選）、`report.json`（含執行結果）——加一步呼叫 `render_run_dashboard.py`，路徑從這兩個檔案裡讀。
+2. 目前 VLM 呼叫（`run_stage_a`/`run_grasp_affordance`）是研究腳本（`s4_live_affordance_smoke_test.py`）在跑，不在 `run_grasp_motion_demo.sh` 的路徑上——如果要「每次 run 都automatically 有 VLM 框框」，需要先決定 VLM 定位要不要變成正式執行流程的一部分（目前候選生成用的是 GT 幾何或人工指定的 mask，不是每次都跑 VLM）。
+
+這步我還沒做，因為牽涉到「VLM 要不要變成正式流程的一部分」這個設計決定，想先確認你要哪種：每次執行都跑一次 VLM（會花真的 vLLM 推論時間），還是 VLM 疊圖只在你手動想看的時候才產生。
+
+---
+
+## 3-old. Web Dashboard 原始提案（即時網頁版，已被上面的簡化版取代，留著備查）
 
 ### 3.1 資料來源盤點
 
@@ -164,7 +217,9 @@ MTC 規劃節點已經有每個候選的 6D 夾爪姿態（`candidate_attempts[i
 ```
 這樣你只要跑一行 `bash tools/run_grasp_demo_live.sh pick_place`，就能「開直播 + 跑一次完整取放 + 邊看邊執行」，符合你說的「執行 run_grasp 之類的指令後能開始動」。
 
-**我還沒寫這個腳本**——上面是設計，確認你要這個行為（尤其是「先強制關掉現有 WebRTC 再重開」這步，會中斷你正在看的畫面）之後我再動手。
+**已實作＋對 live Isaac 驗證，過程中抓到一個一直存在、沒人發現的真實 bug**：
+
+第一次跑 `tools/run_grasp_demo_live.sh pick_place` 時，MTC 規劃 PASS，軌跡也 SUCCEEDED，但 `physical_grasp_success=false`、`task_success=false`——查下去發現 `/robot129_sim/objects/target_cube/pose` 這個 topic 根本不存在。追到根因：**`tools/start_robot129_ros_webrtc.sh` 這個腳本從來沒有接收／轉傳 `--scene` 參數**，不管你傳什麼給它都被忽略，永遠用 `run_robot129_ros_webrtc.py` 的預設值 `--scene marker`（沒有物理方塊、只有純視覺標記的那個最早期場景）。這個 bug 應該從 `pick_place` 場景被加進來那天就存在，只是沒人踩到——今天之前所有成功的物理取放（含這輪 B 類的三次驗證）全部是透過 `start_robot129_grasp_sim.sh`（headless 版本，args 是正確用 `"$@"` 轉傳的），沒有人用直播版本跑過完整的取放鏈路。已修正（讓腳本接受 `--scene`，預設值維持 `marker` 不變，不影響任何沒傳這個參數的既有呼叫），修正後重新測試：`status=PASS`，`task_success=true`，`lift_delta_m=0.0602`，`place_error_z_m≈1e-7`。
 
 ---
 
@@ -174,17 +229,38 @@ MTC 規劃節點已經有每個候選的 6D 夾爪姿態（`candidate_attempts[i
 
 `sim/scripts/run_robot129_ros_webrtc.py` 目前用 `--scene marker|pick_place|pick_place_hammer` 三個寫死的分支決定要 spawn 什麼（第 253-305 行一帶），物體是**程式產生的幾何體**（方塊/長方體），不是載入 USD 資產檔案。沒有「放一個教室場景」「放一個雜亂實驗室」這種機制——地板就是一個平面 + 目前這幾種物體。
 
+### 5.1b 更新：真的有可用的免費資產庫，不用自己建模（2026-09-20 查證）
+
+上一版寫「你需要先準備 USD 場景資產檔案」，查證後發現太悲觀了——這台機器對 NVIDIA 官方的 Isaac Sim 資產 CDN（`omniverse-content-production.s3-us-west-2.amazonaws.com`）有網路，之前用過的痕跡留在 `~/.nvidia-omniverse` 跟 `/tmp/https/...` 快取裡。實際用 `curl -I` 逐一探測過，這些路徑都是真的（HTTP 200，不是猜的）：
+
+```
+Isaac/Environments/Simple_Warehouse/warehouse.usd     # 雜亂倉庫場景（貨架、箱子），最接近「雜亂實驗室」的現成場景
+Isaac/Environments/Office/office.usd                  # 辦公室場景，較乾淨、偏「教室」的調性
+Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd   # 一張真的「實驗室桌子」資產
+Isaac/Props/YCB/Axis_Aligned/010_potted_meat_can.usd  # YCB 物件資料集，household/lab 常見雜物
+Isaac/Props/YCB/Axis_Aligned/025_mug.usd
+Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd
+Isaac/Props/YCB/Axis_Aligned/035_power_drill.usd
+Isaac/Props/YCB/Axis_Aligned/019_pitcher_base.usd
+```
+
+YCB 是機器人抓取研究的標準資料集（馬克杯、洋芋片盒、電鑽、水壺、罐頭……），檔名照 `0XX_物件名.usd` 這種規則命名，上面 5 個是我實際探測過存在的；完整清單有 60+ 個物件，其餘的等真的要用時再逐一探測（`curl -I` 一秒內就知道存不存在，不用猜）。這些是 NVIDIA 官方隨 Isaac Sim 發佈、供模擬使用的標準資產，不是你自己下載的來路不明檔案。
+
+**建議的具體組合**：`SeattleLabTable`（桌子）當背景平面，取代目前的純平面地板；`Simple_Warehouse`（雜亂）或什麼都不放（乾淨背景，只留桌子）依你要多雜亂決定；桌上散幾個 YCB 物件當干擾物，其中一個當抓取目標；一個簡單的綠色 pad（沿用現有 `pick_place` 場景已經有的放置區標記）當放置處。
+
+**這步我還沒動 `sim/scripts/run_robot129_ros_webrtc.py` 的程式碼**——實際把這些 USD 路徑接進場景 spawn 邏輯，需要重啟 Isaac 來測試（會中斷你現在在看的直播畫面），想先確認你要哪個組合再動工。也還沒實際下載/快取這些 USD 檔案到本地（每個檔案大小未知，第一次載入時 Isaac 會自動從這個 CDN 抓，之後有本地快取）。
+
 ### 5.2 建議規範：場景清單 (scene manifest) JSON
 
 比照這輪已經建立的 `scene_geometry.json` 單一事實來源模式，擴充成一個更通用的「場景清單」格式，新增 `--scene-manifest <path.json>` 參數（跟現有 `--scene` 分支並存，不砍掉舊行為）：
 
 ```jsonc
-// research/configs/scenes/cluttered_lab_01.json（範例，尚未實作）
+// research/configs/scenes/cluttered_lab_01.json（範例，路徑已是 §5.1b 實際探測過存在的 NVIDIA 官方資產，尚未實作 loader）
 {
   "schema_version": "scene_manifest_v1",
   "background": {
-    "type": "usd_stage",              // 或 "procedural_floor"（目前唯一支援的）
-    "usd_path": "/abs/path/to/lab_interior.usda"   // 要另外準備教室/實驗室的 USD 資產
+    "type": "usd_stage",
+    "usd_path": "omniverse://<cdn-root>/Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd"
   },
   "objects": [
     {
@@ -199,9 +275,16 @@ MTC 規劃節點已經有每個候選的 6D 夾爪姿態（`candidate_attempts[i
     {
       "id": "distractor_mug",
       "kind": "usd_asset",
-      "usd_path": "/abs/path/to/mug.usd",
+      "usd_path": "omniverse://<cdn-root>/Isaac/Props/YCB/Axis_Aligned/025_mug.usd",
       "xy_m": [0.20, 0.15],
       "graspable": false                // 只是雜物，不是抓取目標
+    },
+    {
+      "id": "distractor_cracker_box",
+      "kind": "usd_asset",
+      "usd_path": "omniverse://<cdn-root>/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd",
+      "xy_m": [0.15, -0.10],
+      "graspable": false
     }
   ]
 }
