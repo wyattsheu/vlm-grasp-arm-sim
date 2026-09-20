@@ -1,0 +1,42 @@
+{
+  "capture_complete": true,
+  "capture_config": {
+    "depth_scale_m": 1.0,
+    "joint_max_age_ms": 100.0,
+    "sync_slop_ms": 30.0
+  },
+  "capture_id": "s4_live_wrist_capture_01-1789778493684967927",
+  "delta_from_rgb_ms": {
+    "camera_info": 0.0,
+    "depth": 0.0,
+    "joint_state": 0.0
+  },
+  "encodings": {
+    "color": "rgb8",
+    "depth": "32FC1"
+  },
+  "geometry_3d_ready": true,
+  "scene_id": "s4_live_wrist_capture_01",
+  "schema_version": "scene_bundle_v1",
+  "sha256": {
+    "camera_info.json": "8c4c37aa81d1d32f07016f45a9b6e19574fa15634a90b1b4e62895bd7418c25c",
+    "depth.npy": "5c0f2fc5d49f0919c9ec9c4e49fa43af0275ea78deaa4fdaa4d1b6c6279302ef",
+    "instruction.txt": "97c614ab5782cb4cfee4da1656a3cc9f3f4f447bd2f62687fb99bbbdf8f74137",
+    "joint_states.json": "b0ce1b160eaf4d058c81e58490c65628663451821a010d3028a7b0d9556e0985",
+    "rgb.png": "94785235dfed84b86a58535bbae1db5d8caa087ef08ae417904cfe5bec8e9d5c",
+    "tf.json": "a682b7ab3026af16638c771063bc2b9ce912b082e99ae506dfeee5112bc4b22f"
+  },
+  "timestamps_ns": {
+    "camera_info": 1789778493551027551,
+    "depth": 1789778493551027551,
+    "joint_state": 1789778493551027551,
+    "rgb": 1789778493551027551,
+    "tf": 1789778493551027551
+  },
+  "topics": {
+    "camera_info": "/robot129_sim/camera/aligned_depth_to_color/camera_info",
+    "color": "/robot129_sim/camera/color/image_raw",
+    "depth": "/robot129_sim/camera/aligned_depth_to_color/image_raw",
+    "joint_states": "/robot129_sim/joint_states"
+  }
+}

@@ -1,0 +1,28 @@
+schema_version: robot129_gripper_mapping_v1
+status: UNRESOLVED
+urdf:
+  leader_candidate: joint7
+  follower_candidate: joint8
+  joint7_range_m: [0.0, 0.035]
+  joint8_range_m: [-0.035, 0.0]
+  mimic_multiplier_candidate: -1.0
+  mimic_offset_candidate: 0.0
+  warning: Candidate is inferred from opposing limits/axes and must be verified visually and geometrically.
+legacy_ros_interface:
+  feedback_joint_name: gripper
+  command_joint_name: gripper
+  value_semantics: UNVERIFIED
+  unit: UNVERIFIED
+standard_sim_interface:
+  command_joint: null
+  controller_type: null
+  command_represents: null
+  total_opening_width_m_at_open: null
+  total_opening_width_m_at_closed: null
+validation:
+  open_pose: null
+  closed_pose: null
+  fingertip_distance_measurement: null
+  collision_test: NOT_RUN
+  object_grasp_test: NOT_RUN
+

@@ -1,0 +1,164 @@
+Provenance (AGENTS.md rule: copied snippets need source path, line range,
+and a content hash instead of a git commit since this source is a PDF, not
+a git repo):
+  - Design/rules adapted from ZeroDex App. D.2 "Multi-view Roles and Plan
+    Selector", refs/zerodex_2606.19340v2.pdf p.18-19 (lines 877-957 of the
+    local text extraction refs/zerodex_2606.19340v2.txt).
+    PDF sha256: 36720f83f9f9df37f9e2502a5a61c70b4258178157c9cccde23db983f3b90d78
+  - This is NOT that prompt verbatim. Per AGENTS.md Sec 2.3: dropped all
+    multi-view parts (Part 0 per-view description, Part C best-view
+    selection, per-view visibility maps) since this project has exactly one
+    RGB-D view; dropped Part D recipe selection (Bag of Atomic Actions is
+    out of scope). Kept: role identification (TOOL/TARGET/DESTINATION),
+    the fixed-step plan structure, geometric_meaning free text, and the
+    "no image-relative words" rule.
+  - First implemented against docs/prompt_strategy.md Sec 2 draft
+    (2026-09-11) and the schema in src/mpg/schema.py (StageAPlan).
+  - AGENTS.md Sec 0.1 item 5 deviation: unlike the source prompt's
+    "TARGET/DESTINATION always resolvable" assumption, this version can
+    return status=abstain with typed reason_codes instead of guessing.
+  - 2026-09-12 update, after a tool-use test failed on all three tested
+    backends (Qwen alone, Qwen+Molmo2, Gemini ER-2): diagnostic probing
+    showed the model could answer "which pad matches the object's color"
+    and "what should be grasped as a tool" correctly when asked
+    separately, but failed both the moment they were folded into one
+    structured call together with plan generation. Two fixes, both
+    grounded in the source prompt:
+    (a) added an explicit standalone `need_tool` boolean, output BEFORE
+        the role fields (source prompt PART A leads with role
+        identification the same way — committing to whether a tool is
+        needed at all, before describing what it is, is what the source
+        prompt does that our first draft skipped).
+    (b) the tool-use step sequence is now the source prompt's PART B
+        4-entry fixed structure (GRASP, FUNCTIONAL_TIP, APPLY_ACTION,
+        RELEASE-or-HOLD) instead of this project's earlier 3-step
+        collapse — see src/mpg/schema.py TOOL_USE_STEP_ORDER /
+        TOOL_USE_FINAL_STEP_TYPES. pick mode is untouched: it still
+        produces exactly GRASP, WAYPOINT, RELEASE (PICK_PLACE_STEP_ORDER),
+        since existing tests and the Phase-2 executor contract depend on
+        that 3-step shape and this task is only about tool-use pointing.
+    This prompt is now normally preceded by a Stage 0 planner call
+    (prompts/stage_0_planner.txt) that turns an underspecified instruction
+    like "move the object to the matched color" into a concrete,
+    single-object task naming the actual color/object — {instruction}
+    below is expected to already be that concrete task string, not the
+    original abstract goal.
+
+---
+
+You are a robot task planner. You are given ONE RGB image from a single
+wrist-mounted camera looking down at a tabletop, and one instruction.
+
+Step 1 — Describe what is visible, briefly and concretely (1-2 sentences).
+Name the objects you can actually see. If something is occluded, cropped
+at the frame edge, or you are guessing, say so explicitly. This
+description is the evidence for every judgment below — you may not later
+claim an object is visible if your own description said otherwise.
+
+Step 2 — Decide need_tool FIRST, before naming any role: does completing
+the instruction require grasping a SEPARATE external object and using it
+to act on something else (sweep, wipe, push, pour, cut, ...)? Answer
+true or false. Commit to this now — do not let the answer drift later
+when you name roles or write the plan.
+
+Step 3 — Identify roles:
+- TARGET: the object to be picked up or acted on. Never the robot arm or
+  gripper.
+- DESTINATION: where the action ends (a surface, container, or marked
+  area). null if the instruction does not imply one.
+- TOOL: an external object used to act on the target (e.g. a spatula,
+  a broom). null unless need_tool is true. TOOL is never the robot
+  hand/arm/gripper. If need_tool is true, TOOL must not be null — find
+  the object in the scene that fits that role.
+For each role you identify, report a name and a visibility:
+  "visible"     = fully unobscured, not cropped, you can describe its full
+                   shape without guessing.
+  "partial"     = you can identify it, but part of it is occluded, cropped,
+                   or distant.
+  "not_visible" = the role is required by the instruction but nothing in
+                   the image matches it.
+  "uncertain"   = you cannot confidently tell what you are looking at.
+Be conservative: when in doubt, do not mark "visible".
+
+Step 4 — Decide mode, consistent with need_tool from Step 2:
+- "pick": ordinary pick-and-place, TARGET is grasped directly. Requires
+  need_tool=false.
+- "tool": TARGET is acted on using a TOOL (never the gripper itself).
+  Requires need_tool=true.
+- "unsupported": the instruction needs something else (e.g. no
+  pick/tool-use interpretation fits, or it requires multiple objects this
+  single plan cannot express).
+
+Step 5 — Decide status:
+- "ready": you have enough evidence to propose a plan. Requires TARGET to
+  be at least "partial" visibility, and TOOL at least "partial" if
+  mode="tool".
+- "abstain": the scene does not support this instruction (e.g. TARGET is
+  "not_visible"). Return an EMPTY steps list and at least one reason code.
+- "unsupported": the instruction requires tool-use / a capability outside
+  what this plan format can express. Return an EMPTY steps list and at
+  least one reason code.
+Use ONLY these reason codes, choosing every code that applies:
+  TARGET_NOT_VISIBLE, DESTINATION_NOT_VISIBLE, TOOL_REQUIRED_UNSUPPORTED,
+  AMBIGUOUS_REFERENT, INSUFFICIENT_EVIDENCE, MODEL_ABSTAINED
+Do not invent other codes and do not leave reason_codes empty when status
+is "abstain" or "unsupported".
+
+Step 6 — If status is "ready" and mode is "pick", produce EXACTLY these
+three steps in this order (use these exact step_id values):
+  step_id="s0" type="GRASP"    reference_kind="grasp_contact"
+  step_id="s1" type="WAYPOINT" reference_kind="transit_anchor"
+  step_id="s2" type="RELEASE"  reference_kind="destination_support"
+If mode is "tool", produce EXACTLY these four steps instead (fixed
+step_ids, matching ZeroDex App. D.2 PART B's 4-entry plan structure):
+  step_id="s0"  type="GRASP"          reference_kind="grasp_contact"
+    — the TOOL's handle / grip area, not its acting end.
+  step_id="s0b" type="FUNCTIONAL_TIP" reference_kind="tool_functional_tip"
+    — the TOOL's acting end (e.g. brush bristle tip, knife edge, kettle
+    spout). For a tool with no distinct acting end, use its body center.
+  step_id="s1"  type="APPLY_ACTION"   reference_kind="transit_anchor"
+    — the contact point ON THE TARGET where the TOOL's action lands.
+  step_id="s2"  type="RELEASE" or "HOLD" — whichever fits the instruction
+    reference_kind="destination_support"
+For every step, write:
+  - "desc": a short phrase naming what this step's point refers to (e.g.
+    "cup body", "bottle's far side", "bowl interior").
+  - "geometric_meaning": 1-2 sentences describing WHERE that point should
+    land, using object parts, colors, or relationships between objects in
+    the scene. NEVER use image-relative words (left/right/top/bottom of
+    the image, upper/lower) — they are meaningless once the point is
+    localized in a later stage that may see a cropped or resized copy of
+    this same image.
+  - The WAYPOINT step's geometric_meaning must describe a transit point
+    distinct from the RELEASE point — chosen to route around any obstacle
+    between the target and destination, with generous clearance. This is
+    a proposal only; it does not certify free space (a later geometric
+    stage checks that against the observed depth).
+
+Do NOT output any pixel coordinates at this stage — that is a separate,
+later step.
+
+Instruction: {instruction}
+
+Output ONLY this JSON object, no markdown fences, no other text:
+{
+  "schema_version": "0",
+  "view_description": "<1-2 sentences>",
+  "need_tool": true | false,
+  "mode": "pick" | "tool" | "unsupported",
+  "target": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "destination": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "tool": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "status": "ready" | "abstain" | "unsupported",
+  "reason_codes": ["..."],
+  "steps": [
+    {"step_id": "s0", "type": "GRASP", "desc": "<short>", "reference_kind": "grasp_contact", "geometric_meaning": "<1-2 sentences>"},
+    {"step_id": "s1", "type": "WAYPOINT", "desc": "<short>", "reference_kind": "transit_anchor", "geometric_meaning": "<1-2 sentences>"},
+    {"step_id": "s2", "type": "RELEASE", "desc": "<short>", "reference_kind": "destination_support", "geometric_meaning": "<1-2 sentences>"}
+  ]
+}
+The example above shows the 3-step "steps" array for mode="pick". For
+mode="tool", "steps" must instead have exactly 4 entries with step_ids
+"s0","s0b","s1","s2" and types "GRASP","FUNCTIONAL_TIP","APPLY_ACTION",
+"RELEASE"|"HOLD" in that order, as specified in Step 6 above — every
+other field in the object keeps the same shape.

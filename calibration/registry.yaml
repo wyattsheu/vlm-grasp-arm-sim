@@ -1,0 +1,41 @@
+schema_version: robot129_calibration_registry_v1
+updated_at: 2026-09-15
+rule: Only files with status VERIFIED and review provenance may replace simulation nominal values.
+artifacts:
+  camera_intrinsics:
+    current: calibration/camera_intrinsics.yaml
+    template: calibration/camera_intrinsics.active.template.yaml
+    status: MISSING
+  hand_eye_extrinsics:
+    current: calibration/extrinsics.yaml
+    template: calibration/extrinsics.active.template.yaml
+    legacy_candidate_available: true
+    status: UNVERIFIED
+  camera_registration:
+    current: calibration/camera_registration.yaml
+    template: calibration/camera_registration.template.yaml
+    status: MISSING
+  gripper_mapping:
+    current: calibration/gripper_mapping.yaml
+    template: calibration/gripper_mapping.active.template.yaml
+    status: UNVERIFIED
+  physical_measurements:
+    current: calibration/physical_measurements.yaml
+    template: calibration/physical_measurements.active.template.yaml
+    status: MISSING
+  hardware_revision:
+    current: calibration/hardware_revision.yaml
+    template: calibration/hardware_revision.template.yaml
+    status: MISSING
+  controller_characterization:
+    current: calibration/controller_characterization.yaml
+    template: calibration/controller_characterization.template.yaml
+    status: MISSING
+  contact_characterization:
+    current: calibration/contact_characterization.yaml
+    template: calibration/contact_characterization.template.yaml
+    status: MISSING
+simulation_nominal_values:
+  frames: ros2_ws/src/robot129_description/config/nominal_frames.yaml
+  physics_report: out/lesson_06/physics_grasp/physics_grasp_report.json
+  use_for_real_robot: false

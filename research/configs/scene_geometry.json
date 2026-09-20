@@ -1,0 +1,20 @@
+{
+  "schema_version": "scene_geometry_v1",
+  "_provenance": "Single source of truth for pick_place/pick_place_hammer scene object geometry. Previously duplicated as independent hardcoded constants in sim/scripts/run_robot129_ros_webrtc.py, ros2_ws/src/robot129_tasks/src/robot129_mtc_pick_place.cpp, tools/generate_s2_cube_candidates.py, and research/scripts/s5_pilot_hammer.py -- the hammer numbers had drifted apart between the Isaac spawn and the offline candidate-generation pilot (handle height 0.030 vs 0.040, head height 0.045 vs 0.050) before this file existed. The cube numbers agreed by luck. Isaac's spawned geometry is authoritative for any number here; the other three readers must load this file, not redeclare it.",
+  "cube": {
+    "size_m": 0.035,
+    "xy_default_m": [0.32, 0.0],
+    "rest_z_m": 0.0175,
+    "drop_z_m": 0.03,
+    "mass_kg": 0.08
+  },
+  "place": {
+    "xy_default_m": [0.27, -0.12]
+  },
+  "hammer": {
+    "handle": { "len_m": 0.14, "width_m": 0.020, "height_m": 0.030 },
+    "head": { "len_m": 0.05, "width_m": 0.045, "height_m": 0.045 },
+    "head_overlap_m": 0.01,
+    "head_local_offset_m": [0.12, 0.0, 0.0]
+  }
+}

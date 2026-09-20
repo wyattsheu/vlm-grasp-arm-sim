@@ -1,0 +1,38 @@
+schema_version: robot129_contact_characterization_v1
+status: UNVERIFIED_TEMPLATE
+scope: REAL_ROBOT_HUMAN_SUPERVISED_ONLY
+captured_at: null
+operator: null
+hardware_revision_ref: null
+gripper_mapping_ref: null
+contact_signal:
+  type: null
+  topic_or_api_field: null
+  unit: null
+  sample_rate_hz: null
+  zeroing_method: null
+objects: []
+# Each object record should include id, mass_kg, dimensions_m, material,
+# grasp_width_m, command_value, peak_signal, hold_time_s, slip_m and result.
+trials:
+  total: null
+  success_count: null
+  false_positive_count: null
+  false_negative_count: null
+metrics:
+  minimum_reliable_contact_signal: null
+  maximum_non_contact_signal: null
+  slip_threshold_m: null
+  hold_duration_s: null
+  repeatability_rate: null
+simulation_mapping:
+  estimated_static_friction: null
+  estimated_dynamic_friction: null
+  estimated_finger_stiffness: null
+  estimated_finger_damping: null
+  fitted_from_trial_ids: []
+provenance:
+  raw_data_paths: []
+  photos_or_video: []
+  reviewed_by: null
+  reviewed_at: null

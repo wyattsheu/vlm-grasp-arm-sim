@@ -1,0 +1,135 @@
+schema_version: robot129_sim_versions_v2
+status: LESSON_01_BASELINE_RECORDED
+recorded_at: "2026-09-13T15:06:59Z"
+
+server:
+  architecture: x86_64
+  kernel: 6.14.0-37-generic
+  os: Ubuntu 24.04.3 LTS
+  glibc: "2.39"
+  cpu: AMD Ryzen Threadripper PRO 7955WX 16-Cores
+  logical_cpu_count: 32
+  gpu_count: 2
+  gpu_full_name: NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition
+  gpu_vram_per_gpu_mib: 97887
+  nvidia_driver: 580.126.09
+  ram_total_gib_approx: 251
+  workspace_mount: /mnt/HDD4
+  free_disk_tib_approx: 12
+  evidence: environment/server_environment.txt
+
+runtime:
+  isaac_lab:
+    source_release: 3.0.0
+    source_path: /mnt/HDD4/wyattsheu/IsaacLab
+    git_branch: feat/task1-rigid-asset-pipeline
+    git_commit: 772533db073a1024fae8fa593c24288e24585efb
+    python_distribution_metadata: 16.4.0
+    note: The source release in VERSION is the project baseline; component distribution versions are independently versioned.
+  isaac_sim:
+    early_planning_placeholder: 6.1.0
+    selected: 6.0.1.0
+    state: INSTALLED_AND_PREVIOUSLY_LAUNCHED
+    install_method: pip packages managed by uv inside the IsaacLab virtual environment
+    python: 3.12.14
+    python_executable: /mnt/HDD4/wyattsheu/IsaacLab/.venv/bin/python
+    entrypoint: /mnt/HDD4/wyattsheu/IsaacLab/.venv/bin/isaacsim
+    launch_wrapper: /mnt/HDD4/wyattsheu/IsaacLab/view.sh
+    previously_successful_command: cd /mnt/HDD4/wyattsheu/IsaacLab && bash view.sh /mnt/HDD4/wyattsheu/lit_scene.py 1
+    lesson_01_launch: NOT_RUN_GPU_BUSY
+    local_runtime_evidence:
+      - /mnt/HDD4/wyattsheu/IsaacLab/pyproject.toml
+      - /mnt/HDD4/wyattsheu/IsaacLab/uv.lock
+      - /mnt/HDD4/wyattsheu/logs/gpu/gpu_watch_stdout.log
+      - /mnt/HDD4/wyattsheu/IsaacLab/docs/task1_windows_connection.md
+    compatibility_note: Current Isaac Sim 6.0.1 requirements list a newer tested Linux driver than 580.126.09, while the Isaac Lab 3.0 installation page recommends 580.95.05 or later. Preserve the already-working local driver and do not upgrade during this course.
+  physics_backend:
+    selected: PhysX
+    state: INSTALLED_WITH_ISAAC_SIM
+    robot129_validation: NOT_RUN
+  ros_distro:
+    early_planning_placeholder: humble
+    selected: jazzy
+    state: NOT_INSTALLED_OR_NOT_DISCOVERABLE_IN_CURRENT_SHELL
+    rationale: Ubuntu 24.04 with ROS 2 Jazzy is NVIDIA's recommended Isaac Sim 6.0 configuration and the native ROS 2 Jazzy target.
+  ros_middleware:
+    selected: rmw_fastrtps_cpp
+    state: NOT_RUN
+    rationale: Fast DDS is NVIDIA's default and recommended single-machine configuration; revisit only if Lesson 8 measurements require it.
+  moveit:
+    selected_release_line: MoveIt 2 for ROS 2 Jazzy
+    exact_version: null
+    state: NOT_INSTALLED
+  moveit_task_constructor:
+    selected_release_line: ROS 2 Jazzy compatible
+    exact_version: null
+    state: NOT_INSTALLED
+  python:
+    system: 3.12.3
+    isaac_environment: 3.12.14
+    research_environment: 3.12.3
+
+containers:
+  docker_cli: 28.5.1
+  docker_daemon: UNAVAILABLE_TO_CURRENT_USER
+  docker_required: false
+  apptainer: 1.4.5
+  singularity_command: apptainer 1.4.5
+  nvidia_container_toolkit: 1.18.0
+  nvidia_container_cli: 1.18.0
+
+research:
+  environment_path: /mnt/HDD4/wyattsheu/env_robot129_research
+  isolation: Separate from Isaac Sim and outside the checksum-verified handoff bundle
+  packages:
+    numpy: 2.5.3
+    Pillow: 12.3.0
+    PyYAML: 6.0.3
+    requests: 2.34.2
+  unit_tests:
+    result: 108_PASS
+    executed_at: "2026-09-13"
+  offline_acceptance:
+    result: PASS
+    scope: SYNTHETIC_REPLAY_ONLY
+    actual_model_calls: 0
+    robot_commands: 0
+    artifact_root: research/out/validation/20260913T150415753964Z
+
+models:
+  gemini:
+    model_id: gemini-robotics-er-2-preview
+    state: NOT_RUN
+  local_qwen:
+    model_id: Qwen/Qwen3-VL-4B-Instruct
+    state: NOT_DOWNLOADED_OR_VERIFIED
+  local_molmo:
+    model_id: Molmo2-4B
+    state: NOT_DOWNLOADED_OR_VERIFIED
+  note: Model weights are outside Lesson 1 and require a separate download checkpoint.
+
+decisions:
+  ros_domain_id:
+    candidate: 129
+    state: NOT_VERIFIED
+  ros_namespace:
+    candidate: /robot129_sim
+    state: NOT_VERIFIED
+  simulation_motion_gate: No simulated motion until ROS domain and namespace isolation are demonstrated and recorded.
+  isaac_asset_root: /mnt/HDD4/wyattsheu/IsaacLab/assets
+  generated_asset_root: null
+  cache_root: null
+  disk_budget:
+    existing_isaaclab_gib_approx: 30
+    research_environment_mib_approx: 85
+    handoff_bundle_mib_approx: 11
+    workspace_free_tib_approx: 12
+  rationale: Reuse the installed and previously working Isaac Sim 6.0.1 environment. Keep research, ROS 2, and future VLM environments separate. Docker access is not required.
+
+official_compatibility_evidence:
+  isaac_sim_requirements_6_0_1: https://docs.isaacsim.omniverse.nvidia.com/6.0.1/installation/requirements.html
+  isaac_sim_python_6_0: https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/install_python.html
+  isaac_lab_3_0_installation: https://isaac-sim.github.io/IsaacLab/v3.0.0-beta2/source/setup/installation/index.html
+  isaac_sim_ros_2_6_0: https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/install_ros.html
+  ros_2_jazzy_ubuntu: https://docs.ros.org/en/jazzy/Installation/Alternatives/Ubuntu-Install-Binary.html
+  moveit_2_binary: https://moveit.ai/install-moveit2/binary/

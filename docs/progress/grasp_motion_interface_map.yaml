@@ -1,0 +1,168 @@
+# S0 interface map for the grasp/motion module.
+# Generated 2026-09-18 by read-only survey + offline FK scan (tools/analyze_top_down_reach.py).
+# Every field cites file:line evidence or is explicitly UNVERIFIED / NOT_RUN.
+# This file records CURRENT (pre-S1) state, not the target design.
+
+status: S0_COMPLETE_READ_ONLY
+
+ros:
+  domain_id: 129
+  namespace: /robot129_sim
+  rmw_implementation: rmw_fastrtps_cpp
+  distro: jazzy
+  env_path: /mnt/HDD4/wyattsheu/env_robot129_ros
+
+isaac:
+  version: 6.0.1.0
+  isaaclab_venv: /mnt/HDD4/wyattsheu/IsaacLab/.venv
+  launch_pattern: "cd /mnt/HDD4/wyattsheu/IsaacLab && uv run --no-sync python <script> --device cuda:0"
+  physics_dt_s: 0.008333  # 1/120, sim/scripts/run_robot129_ros_webrtc.py:140
+  render_interval: 4
+  clock_published: false  # grep found no /clock publisher; simulation.yaml claims use_sim_time=true but nothing implements it
+
+live_runner:
+  file: sim/scripts/run_robot129_ros_webrtc.py
+  node_name: isaac_articulation_bridge  # :243
+  requires_domain: 129  # refuses to start otherwise, :132
+  subscribes:
+    - topic: /robot129_sim/arm_controller/joint_trajectory
+      joints: [joint1, joint2, joint3, joint4, joint5, joint6]
+      line: "422-441"
+    - topic: /robot129_sim/gripper_controller/joint_trajectory
+      joints: [joint7]
+      line: "422-441"
+    - topic: /robot129_sim/joint_trajectory
+      joints: [joint1, joint2, joint3, joint4, joint5, joint6, joint7]
+      line: "422-441"
+  first_point_t0_accepted: false  # BUG for MoveIt compat, :384
+  interpolation: smoothstep_per_segment_wallclock  # :116-128,403,456 — S1 must change to sim-time linear/cubic
+  cancel_supported: false
+  completion_signal: log_line_only  # :465, no action result
+  publishes:
+    joint_states:
+      topic: /robot129_sim/joint_states
+      joints: [joint1, joint2, joint3, joint4, joint5, joint6, joint7, joint8]
+      rate_hz_nominal: 30  # every 4th frame, :472
+      has_effort: false
+      frame_id: ""
+      line: "246,472-475"
+    tf:
+      - world -> camera_color_optical_frame  # :303-314, only TF published; no robot_state_publisher
+  scene_current:
+    floor: {collision: true, rigid_body: false}
+    target_marker:
+      prim: /World/TargetMarker
+      visual_only: true  # no collision/rigid body/mass, :155-159
+      purpose: viewport red-pixel probe, :96-97
+    graspable_object: none
+
+gripper:
+  command_joint: joint7  # only accepted joint name, :34,431
+  mimic_joint: joint8  # forced to -joint7 every loop, :466; USD has NewtonMimicAPI but PhysX enforcement UNVERIFIED
+  joint7_limits_m: [0.0, 0.035]
+  joint8_limits_m: [-0.035, 0.0]
+  width_to_joint_mapping: undefined  # calibration/gripper_mapping.active.template.yaml status UNRESOLVED
+  effort_limit_n: 10  # urdf joint7 limit effort, robot129.urdf:259
+
+frames:
+  base_link: {parent: world, joint: world_to_base, type: fixed}
+  tcp:
+    parent: gripper_base
+    offset_z_m: 0.180  # robot129.urdf:307-311
+    correctness: WRONG  # fingertip mesh only reaches 0.136m; see pinch_center below
+  pinch_center_proposed:
+    parent: gripper_base
+    offset_z_m: 0.125
+    basis: "cross-validated against out/lesson_06/grasp_pose_search.json empirical contact range 0.108-0.138m"
+    status: PROPOSED_NOT_YET_IN_URDF  # to be applied as MTC ik_frame offset only, not URDF edit
+  camera_mount:
+    parent: gripper_base
+    offset_xyz_m: [0.055, 0.0, 0.075]  # robot129.urdf:312-316
+    collision_geometry: none  # camera body absent from collision model
+
+joint_limits_rad:
+  joint1: [-2.618, 2.618]
+  joint2: [0.0, 3.14]
+  joint3: [-2.967, 0.0]
+  joint4: [-1.745, 1.745]
+  joint5: [-1.22, 1.22]
+  joint6: [-2.0944, 2.0944]
+
+fk_validation:
+  method: numpy_grid_scan
+  script: tools/analyze_top_down_reach.py
+  cross_check: "HOME joint angles from out/lesson_06/gripper_probe.json reproduce measured gripper_base pose to <1e-6 m"
+  output: out/grasp_motion/s0/reach_scan.json
+  top_down_reachable_r_by_z_m:
+    "0.0175": [0.003, 0.534]
+    "0.05": [0.034, 0.512]
+    "0.09": [0.081, 0.484]
+    "0.12": [0.115, 0.452]
+    "0.15": [0.170, 0.415]
+
+chosen_scene_layout:
+  support_surface_z_m: 0.0
+  cube:
+    size_m: 0.035
+    center_xyz_m: [0.32, 0.0, 0.0175]
+    radius_m: 0.32
+  place:
+    xyz_m: [0.27, -0.12, 0.0195]
+    radius_m: 0.296
+  camera_home_view_xy_m: {x: [0.24, 0.45], y: [-0.15, 0.15]}  # UNVERIFIED_CARRIED, not remeasured this round
+
+moveit:
+  version: 2.12.4  # conda-meta
+  kinematics_solver: KDL
+  arm_group: {chain: [base_link, tcp]}
+  gripper_group: [joint7, joint8]
+  end_effector:
+    name: robot129_gripper
+    parent_link: tcp
+    parent_group: MISSING  # robot129.srdf:4, needs fix in S1/S2
+  controllers:
+    arm_controller: {type: FollowJointTrajectory, action_ns: follow_joint_trajectory}
+    gripper_controller: {type: FollowJointTrajectory, action_ns: follow_joint_trajectory, joints: [joint7]}
+    moveit_controller_manager_key: MISSING  # moveit_controllers.yaml, causes WARN in move_group.log:37
+  move_group_namespace: root  # should move to /robot129_sim in S1/S2
+  fixed_plan_demo:
+    status: PASS_PLAN_ONLY
+    points: 22
+    final_error_rad: 0.000495424
+    file: out/lesson_09/moveit_fixed_plan.json
+
+mtc:
+  version: ros2-0.1.4
+  build: cpp_only  # external/README.md:5-8, patches/mtc-0.1.4-jazzy-cpp-only.patch
+  python_bindings: false
+  moveit_py: false
+  capabilities_package_built: false  # ExecuteTaskSolution unavailable, must add or use action adapter directly
+  existing_demo:
+    file: ros2_ws/src/robot129_tasks/src/robot129_mtc_plan.cpp
+    is_real_pick: false  # 7 hardcoded joint MoveTo stages, no cube, no IK, no attach, :22-40
+    publishes_fake_joint_states: true  # :22-28, MUST be disabled when live Isaac runs
+
+fake_grasp_demo:
+  file: sim/scripts/verify_robot129_physics_grasp.py
+  cube: {mass_kg: 0.08, static_friction: 4.0, dynamic_friction: 3.0, combine_mode: max}
+  cube_initial_pose: {xyz_m: [0.38, 0.0, 0.45], gravity_disabled_until_grasped: true}  # :185,196,236-239,298-299
+  arm_poses: hardcoded_joint_angles  # no IK
+  contact: real  # ContactSensor, kinematic_attachment: false, :198-205,363
+  table_present: false
+  validates_pickup_from_surface: false  # cube spawns floating already between fingers
+
+research_pipeline:
+  path: research/src/mpg
+  unittest_count: 108
+  unittest_status: PASS
+  test_command: "cd research && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /mnt/HDD4/wyattsheu/env_robot129_research/bin/python -m unittest discover -s tests -v"
+  candidates_py_is_grasp_generator: false  # it's a 2D numbered point grid for VLM selection
+  ik_code_present: false
+  action_generation_survey_md: NOT_FOUND_IN_WORKSPACE
+
+open_ports:
+  "49100": {holder_pid: 3859986, process: parcel-forge/view_scene.py, owner: same_user, action: leave_running_use_headless}
+
+gpu:
+  auto_selection: lowest_of "util*100+memMiB/100"  # tools/start_robot129_ros_webrtc.sh:24-27
+  observed_at_s0: {gpu0: {util_pct: 24, mem_used_mib: 2984}, gpu1: {util_pct: 95, mem_used_mib: 42925}}

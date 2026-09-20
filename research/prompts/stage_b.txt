@@ -1,0 +1,105 @@
+Provenance (AGENTS.md rule: copied snippets need source path, line range,
+and a content hash instead of a git commit since this source is a PDF, not
+a git repo):
+  - Design/rules adapted from ZeroDex App. D.2 "Point Localization from a
+    Fixed Plan [Reference View]", refs/zerodex_2606.19340v2.pdf p.19
+    (lines 963-991 of the local text extraction
+    refs/zerodex_2606.19340v2.txt).
+    PDF sha256: 36720f83f9f9df37f9e2502a5a61c70b4258178157c9cccde23db983f3b90d78
+  - This is NOT that prompt verbatim. Dropped the "functional tip" side
+    output (tool-use dexterous-grasp detail out of scope here) and the
+    multi-view framing (single camera only).
+  - First implemented against docs/prompt_strategy.md Sec 3 draft
+    (2026-09-11) and the schema in src/mpg/schema.py (LocatedStep /
+    parse_stage_b_response).
+  - DELIBERATE DEVIATION from the source prompt's "Never output null. Pick
+    your best estimate even when the reference is partially occluded."
+    rule: AGENTS.md Sec 0.1 item 5 requires the opposite — do not guess a
+    coordinate for an absent/occluded reference; return a typed
+    unavailable status with a reason code instead. This preserves the
+    legacy client's absence signal rather than forcing a point onto
+    whatever is nearest.
+  - 2026-09-12 update: re-added the FUNCTIONAL_TIP step this file's
+    original provenance note said was dropped. Without it, a tool-use
+    plan cannot express the paper's reference figure (grasp point on the
+    tool handle is not enough to overlay a matching point on the tool's
+    acting end, e.g. brush bristle tip) even when Stage A correctly
+    identifies the tool. Also added the APPLY_ACTION contact-point rule
+    (source prompt PART A step 1: "the contact pose where the TOOL acts
+    on the TARGET"). Both rules only fire for steps of that type; pick-
+    mode plans (GRASP/WAYPOINT/RELEASE) are unaffected.
+
+---
+
+You are given the SAME image as before and a FIXED plan that has already
+decided the roles, step order, and step types. Your ONLY job is to locate
+each step's reference point as [y, x] on THIS image, using the geometric
+description already provided for each step.
+
+Coordinates: normalized [y, x], each in the integer range [0, 1000].
+[0, 0] = the center of the top-left pixel. [1000, 1000] = the center of
+the bottom-right pixel.
+
+Do NOT change step_id, type, desc, reference_kind, or geometric_meaning —
+copy step_id and type back exactly as given, and add only the localization
+fields below.
+
+For each step:
+- If you can locate the point described by geometric_meaning on THIS
+  image with reasonable confidence, set point_status="localized" and give
+  point_yx_norm1000=[y, x]. The point must lie on the part of the scene
+  the reference describes — for a GRASP step this means a graspable
+  region of the object actually being grasped (the TOOL in tool-mode
+  plans, the TARGET in pick-mode plans), not the destination; for a
+  RELEASE/HOLD step this means the destination's support surface/interior
+  (RELEASE) or stays wherever the object already is (HOLD), not the
+  target or tool.
+- If the reference in this step cannot be localized on this image (not
+  visible, occluded, cropped, or the geometric description does not match
+  anything you can find), set point_status="unavailable",
+  point_yx_norm1000=null, and give at least one reason code. Do NOT invent
+  a coordinate to avoid returning "unavailable" — a wrong guess is worse
+  than a typed abstention, because downstream geometry cannot tell a wrong
+  guess from a real observation.
+  Use ONLY these reason codes, choosing every code that applies:
+    TARGET_NOT_VISIBLE, DESTINATION_NOT_VISIBLE, OCCLUDED, OUT_OF_FRAME,
+    UNCERTAIN_LOCALIZATION
+- For a WAYPOINT step specifically: this point is a TRANSIT point the
+  moving object must pass through to avoid collisions along the path
+  between GRASP and RELEASE. It must be distinct from the RELEASE point.
+  Use the step's geometric_meaning to place it where the geometry implies
+  a detour is needed. This is still a 2D proposal; it does not certify
+  free space, reachability, or collision-freedom — a later geometric stage
+  checks that using the observed depth.
+- For a FUNCTIONAL_TIP step specifically: this point is the ACTING END of
+  the object being grasped in the same plan's GRASP step — e.g. a brush's
+  bristle tip, a knife's edge, a kettle's spout — NOT the handle or grip
+  area (that is the GRASP point). If the object has no distinct acting
+  end (a simple pick-and-place object), use its body center instead.
+- For an APPLY_ACTION step specifically: this point is the CONTACT
+  location on the TARGET where the grasped tool's action lands (e.g.
+  where bristles sweep across, where a blade cuts) — it lies ON the
+  target, not on the tool and not on the destination.
+- Avoid extreme image edges and pure background pixels unless the
+  geometric_meaning specifically describes that location.
+
+Roles (already identified, for context only — do not re-derive them):
+- TARGET: {target_name}
+- DESTINATION: {destination_name}
+- TOOL: {tool_name}
+
+Fixed plan (do not modify; locate each entry's point):
+{plan_steps_json}
+
+Output ONLY a JSON array, no markdown fences, no other text, one entry per
+step in the SAME order as the fixed plan above:
+[
+  {
+    "step_id": "<as given>",
+    "type": "<as given>",
+    "point_yx_norm1000": [y, x] | null,
+    "point_status": "localized" | "unavailable",
+    "reason_codes": ["..."]
+  },
+  ...
+]

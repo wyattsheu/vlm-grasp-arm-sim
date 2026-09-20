@@ -1,0 +1,8 @@
+status: SIMULATION_NOMINAL_UNVERIFIED_ON_HARDWARE
+tcp_parent: gripper_base
+tcp_xyz_m: [0.0, 0.0, 0.180]
+camera_mount_parent: gripper_base
+camera_mount_xyz_m: [0.055, 0.0, 0.075]
+camera_mount_rpy_rad: [0.0, 0.0, 0.0]
+optical_rotation_rpy_rad: [-1.57079632679, 0.0, -1.57079632679]
+warning: Do not use these nominal transforms for real Robot 129 deployment.

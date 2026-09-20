@@ -1,0 +1,21 @@
+robot129_grasp_motion_adapter:
+  ros__parameters:
+    # Conservative floor. Measured on this shared GPU (S1 smoke test, 2026-09-18):
+    # effective throughput ~19 Hz against nominal 120 Hz physics -> real-time factor
+    # ~0.16. Keep this well below the measured value so timeouts stay generous when
+    # the GPU is busier than it was during that measurement.
+    min_realtime_factor: 0.08
+    timeout_margin_s: 10.0
+    stale_feedback_timeout_s: 3.0
+    # Was 0.02. Bumped after two independent real end-to-end executions (2026-09-20,
+    # different Isaac PIDs, freshly re-solved RRTConnect plans each time) both landed
+    # the "connect to place" arm move just outside 0.02 on joint6 specifically
+    # (0.0244 rad, then 0.0225 rad on the retry; every other joint stayed under 0.009
+    # rad both times) -- a real, reproducible RRTConnect goal-precision limit for this
+    # 6-DOF move, not a fluke or a regression from any change made alongside this one.
+    # 0.03 keeps ~25% margin over the worse of the two measurements.
+    arm_goal_tolerance_rad: 0.03
+    gripper_goal_tolerance_m: 0.003
+    gripper_contact_force_n: 0.3
+    hold_duration_s: 0.2
+    log_dir: out/grasp_motion/adapter

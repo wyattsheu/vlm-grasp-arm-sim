@@ -1,0 +1,33 @@
+# S3 grasp candidate generator config (grasp_motion_research_plan_20260918.md §5.1, §8).
+# Robot129-specific numbers are cross-validated against real measurements, not guessed:
+# - gripper.max_opening_m: 2 * joint7 upper limit (0.035m), matches
+#   ros2_ws/src/robot129_description/urdf/robot129.urdf:259.
+# - gripper.pinch_offset_m: gripper_base -> pinch_center along the approach axis,
+#   cross-validated against out/lesson_06/grasp_pose_search.json's empirical
+#   contact range (0.108-0.138m) and used as the MTC ik_frame offset in
+#   robot129_tasks/src/robot129_mtc_pick_place.cpp (not a URDF change).
+# - table_clearance_m: minimum gap required between the pinch point and the
+#   support surface so the (unmodeled) finger pads and palm don't intersect it;
+#   set conservatively, not measured against real finger geometry yet.
+gripper:
+  max_opening_m: 0.0690        # small safety margin under the true 0.070m URDF max
+  min_opening_m: 0.006         # avoid candidates only valid for near-zero-width objects
+  pinch_offset_m: 0.125
+  table_clearance_m: 0.015
+
+candidates:
+  num_yaws: 8
+  yaw_start_rad: 0.0
+  max_raw_candidates_per_scene: 32
+  max_returned_candidates: 8
+  edge_band_fraction: 0.12      # points within this fraction of the projected span
+                                 # from either extreme count as "edge contact" points
+  min_edge_points_per_side: 3   # fewer than this on either side -> UNKNOWN_GEOMETRY
+  antipodal_angle_tolerance_deg: 35.0  # max allowed deviation from exactly-opposite
+                                        # edge-cluster centroids through the grasp center
+
+scoring:
+  # Lower is better; candidates are sorted ascending by total score.
+  width_margin_weight: 1.0      # prefer candidates using less of the max opening
+  centering_weight: 1.0         # prefer the two edge-contact clusters being balanced
+                                 # around the closing axis midpoint (antipodal-like)

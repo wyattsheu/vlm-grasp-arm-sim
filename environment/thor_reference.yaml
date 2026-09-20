@@ -1,0 +1,25 @@
+schema_version: robot129_host_reference_v1
+captured_on: 2026-09-11
+status: HISTORICAL_REFERENCE_REVERIFY_BEFORE_DEPLOYMENT
+host_role: Robot 129 physical robot computer
+hardware: NVIDIA Jetson AGX Thor Developer Kit
+architecture: aarch64
+os: Jetson Linux R38.4.0
+kernel: 6.8.12-tegra
+ram_approx_gib: 122
+root_disk:
+  size_gib: 937
+  available_gib_at_capture: 42
+  note: A later 2026-09-13 check showed about 26 GiB available; recheck before transfer.
+deployment:
+  arm_container: mm_container
+  live_arm_mount_host: /home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws
+  live_arm_mount_container: /workspace/main_ws
+  ros_distro: UNVERIFIED_FROM_RUNTIME
+  piper_source_documentation_target: ROS_2_HUMBLE
+restrictions:
+  - Do not copy x86 virtualenvs, ROS build/install trees, or container binaries here.
+  - Rebuild ARM dependencies for the Thor platform.
+  - Physical execution requires a separate human-supervised plan.
+source: docs/00_system_recon.md from the source workspace
+

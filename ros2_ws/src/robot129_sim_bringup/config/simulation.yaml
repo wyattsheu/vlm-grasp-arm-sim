@@ -1,0 +1,11 @@
+simulation_only: true
+ros_domain_id: 129
+namespace: /robot129_sim
+rmw_implementation: rmw_fastrtps_cpp
+use_sim_time: true
+hardware_drivers_allowed: false
+topics:
+  clock: /clock
+  joint_states: /robot129_sim/joint_states
+  arm_command: /robot129_sim/arm_controller/joint_trajectory
+  gripper_command: /robot129_sim/gripper_controller/joint_trajectory

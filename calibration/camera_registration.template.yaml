@@ -1,0 +1,36 @@
+schema_version: robot129_camera_registration_v1
+status: UNVERIFIED_TEMPLATE
+camera_id: null
+role: wrist_rgbd
+hardware_revision_ref: null
+intrinsics_ref: calibration/camera_intrinsics.yaml
+extrinsics_ref: calibration/extrinsics.yaml
+frames:
+  parent_link: null
+  mount_frame: null
+  camera_link: null
+  color_optical_frame: null
+  aligned_depth_frame: null
+  base_frame: null
+streams:
+  color_topic: null
+  aligned_depth_topic: null
+  camera_info_topic: null
+  color_encoding: null
+  depth_encoding: null
+  width: null
+  height: null
+  fps: null
+synchronization:
+  method: null
+  maximum_rgb_depth_skew_ms: null
+  maximum_joint_age_ms: null
+  clock_source: null
+validation:
+  mean_reprojection_error_px: null
+  p95_reprojection_error_px: null
+  depth_scale_relative_error: null
+  known_point_3d_error_m: null
+  validation_dataset: null
+  accepted_by: null
+  reviewed_at: null

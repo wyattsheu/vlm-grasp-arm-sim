@@ -1,0 +1,48 @@
+schema_version: robot129_controller_characterization_v1
+status: UNVERIFIED_TEMPLATE
+scope: REAL_ROBOT_HUMAN_SUPERVISED_ONLY
+captured_at: null
+operator: null
+hardware_revision_ref: null
+software:
+  source_commit: null
+  installed_artifact_hash: null
+  ros_distro: null
+  controller_node: null
+  controller_type: null
+  update_rate_hz: null
+interfaces:
+  command_topic_or_action: null
+  feedback_topic: null
+  joint_names: null
+  position_unit: radian_or_meter_per_joint
+  velocity_unit: radian_per_second_or_meter_per_second
+  timestamp_clock: null
+safety:
+  tested_joint_limit_margin: null
+  velocity_limit_fraction: null
+  effort_or_current_limit: null
+  watchdog_timeout_s: null
+  emergency_stop_operator: null
+experiments:
+  unloaded_step_response: []
+  trajectory_tracking: []
+  payload_tracking: []
+metrics:
+  command_to_feedback_latency_ms: null
+  tracking_rmse_per_joint: null
+  peak_error_per_joint: null
+  overshoot_per_joint: null
+  settling_time_s_per_joint: null
+  cancel_latency_ms: null
+  timeout_result: null
+completion_policy:
+  position_tolerance_per_joint: null
+  orientation_tolerance_rad: null
+  stable_duration_s: null
+  success_signal: null
+provenance:
+  raw_data_paths: []
+  analysis_script_commit: null
+  reviewed_by: null
+  reviewed_at: null

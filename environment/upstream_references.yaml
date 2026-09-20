@@ -1,0 +1,59 @@
+schema_version: robot129_upstream_references_v1
+captured_at: '2026-09-15T00:00:00+08:00'
+policy:
+  purpose: interface_reference_only
+  modify_upstream_checkouts: false
+  execute_hardware_launchers: false
+  production_ros_domain_joined: false
+repositories:
+  robotic_agent:
+    url: https://github.com/nycu-acm/robotic_agent
+    branch: main
+    commit: 338785cf9978ebdf842c82e4806ee012853e9b57
+    checkout: references/upstream/robotic_agent
+    checkout_mode: shallow_depth_1
+    role: umbrella_integration_and_deployment
+    learning_branch:
+      name: feat/active-search-stage1-removal
+      commit: c6364d28b070fc40762a787ad5a20be4da1e0e16
+      author: wyattsheu
+      role: integration_observation_and_camera_vlm_debug_view
+  mm_system:
+    url: https://github.com/nycu-acm/mm_system
+    branch: main
+    commit: a99e3d757ba31e7cb085e30ae3185f59bf076fe6
+    checkout: references/upstream/mm_system
+    checkout_mode: shallow_depth_1_without_submodules
+    role: arm_rgbd_vlm_and_task_command
+    learning_branch:
+      name: feat/active-search-stage1-removal
+      commit: 03e9c7b4cfaf91da9baebc125b0a811b1e66a853
+      author: wyattsheu
+      role: structured_task_request_active_search_and_stage1_removal
+      stage1_policy: optional_fallback_disabled_by_default
+  robotic_system:
+    url: https://github.com/nycu-acm/robotic_system
+    commit: fa6e0b7206799f6f3c628e63a53a3e17cacbe5c2
+    pinned_by: references/upstream/robotic_agent/stack.lock
+    checkout: references/upstream/robotic_system
+    checkout_mode: partial_clone_sparse_checkout
+    role: decision_agent_task_decomposition_and_capability_planning
+upstream_contracts:
+  production_ros_domain: 0
+  simulation_ros_domain: 129
+  manual_command_topic: /manual_command
+  task_reply_topic: /task_reply
+  arm_action: /task_command
+  arm_action_type: mm_interface/action/TaskCommand
+  hardware_command_topic: /joint_states
+  hardware_feedback_topic: /joint_states_feedback
+  rgb_topic: /camera/color/image_raw
+  depth_topic: /camera/aligned_depth_to_color/image_raw
+  camera_info_topic: /camera/aligned_depth_to_color/camera_info
+  vllm_endpoint: http://127.0.0.1:8001/v1/chat/completions
+  vllm_served_names: [qwen-vl, decision-qwen]
+notes:
+  - These commits describe GitHub state, not uncommitted files in the live Robot 129 tree.
+  - piper_ros is intentionally not initialized because this workspace is simulation-only.
+  - The user identified feat/active-search-stage1-removal as their learning/reference branch.
+  - Branch files are inspected through git show/diff and are not launched in this workspace.

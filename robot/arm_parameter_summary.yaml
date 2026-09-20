@@ -1,0 +1,36 @@
+schema_version: piper_urdf_summary_v1
+status: COPIED_FROM_VENDOR_URDF_REQUIRES_HARDWARE_REVISION_CHECK
+source_file: robot/vendor/piper_description/urdf/piper_description.urdf
+source_repo_head_from_prior_recon: 583ada7af4d4c52420d82edac34cdec919228712
+robot_name: piper
+units:
+  length: meter
+  revolute_position: radian
+  prismatic_position: meter
+joints:
+  - {name: joint1, type: revolute, lower: -2.618, upper: 2.618, velocity: 5.0, effort: 100.0}
+  - {name: joint2, type: revolute, lower: 0.0, upper: 3.14, velocity: 5.0, effort: 100.0}
+  - {name: joint3, type: revolute, lower: -2.967, upper: 0.0, velocity: 5.0, effort: 100.0}
+  - {name: joint4, type: revolute, lower: -1.745, upper: 1.745, velocity: 5.0, effort: 100.0}
+  - {name: joint5, type: revolute, lower: -1.22, upper: 1.22, velocity: 5.0, effort: 100.0}
+  - {name: joint6, type: revolute, lower: -2.0944, upper: 2.0944, velocity: 3.0, effort: 100.0}
+  - {name: joint7, type: prismatic, lower: 0.0, upper: 0.035, velocity: 1.0, effort: 10.0}
+  - {name: joint8, type: prismatic, lower: -0.035, upper: 0.0, velocity: 1.0, effort: 10.0}
+fixed_joints:
+  - joint6_to_gripper_base
+known_description_gaps:
+  - Exact physical Piper and gripper revision is not recorded in this bundle.
+  - Acceleration limits are absent or disabled in the reference MoveIt config.
+  - joint7 and joint8 have no mimic relation in the copied main URDF.
+  - The reference MoveIt gripper controller lists only joint7.
+  - SRDF arm tip is link6; flange, tool0 and TCP policy need explicit definitions.
+  - Wrist camera and mounting bracket are absent from the copied URDF.
+  - Visual meshes are also used as collision meshes and require simulation review.
+  - Manufacturer-rated payload and validated drive gains are not included.
+do_not_assume:
+  acceleration_limits: null
+  payload_kg: null
+  tcp_transform: null
+  joint_offsets: null
+  controller_gains: null
+

@@ -1,0 +1,350 @@
+"""Persistent ROS 2 controlled Robot 129 simulation with an interactive WebRTC viewport."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import signal
+import time
+
+from isaaclab.app import AppLauncher
+
+parser = argparse.ArgumentParser(description="Run Robot 129 under isolated ROS 2 trajectory control.")
+parser.add_argument("--bundle", type=Path, required=True)
+parser.add_argument("--warmup-frames", type=int, default=90)
+AppLauncher.add_app_launcher_args(parser)
+args = parser.parse_args()
+args.headless = True
+args.enable_cameras = False
+launcher = AppLauncher(args)
+app = launcher.app
+
+import carb
+import numpy as np
+import torch
+
+import isaaclab.sim as sim_utils
+from isaaclab.actuators import ImplicitActuatorCfg
+from isaaclab.assets import Articulation, ArticulationCfg
+from isaaclab.sim import SimulationContext
+
+JOINT_NAMES = [f"joint{i}" for i in range(1, 9)]
+ARM_NAMES = JOINT_NAMES[:6]
+GRIPPER_NAMES = ["joint7"]
+ACTIVE_NAMES = JOINT_NAMES[:7]
+LIMITS = np.array(
+    [
+        [-2.618, 2.618],
+        [0.0, 3.140],
+        [-2.967, 0.0],
+        [-1.745, 1.745],
+        [-1.220, 1.220],
+        [-2.094, 2.094],
+        [0.0, 0.035],
+        [-0.035, 0.0],
+    ],
+    dtype=np.float64,
+)
+HOME = np.array([0.0, 1.20, -1.25, 0.0, 0.15, 0.0, 0.035, -0.035], dtype=np.float64)
+keep_running = True
+
+
+def request_stop(_signum, _frame):
+    global keep_running
+    keep_running = False
+
+
+def set_live_camera(viewport, eye=(0.92, 0.78, 0.72), target=(0.27, 0.0, 0.36)):
+    from omni.kit.viewport.utility.camera_state import ViewportCameraState
+    from pxr import Gf
+
+    path = viewport.get_active_camera() or "/OmniverseKit_Persp"
+    state = ViewportCameraState(path, viewport)
+    state.set_position_world(Gf.Vec3d(*eye), False)
+    state.set_target_world(Gf.Vec3d(*target), True)
+    return str(path)
+
+
+def capture_viewport_probe(root: Path, viewport, step_once) -> dict:
+    from omni.kit.viewport.utility import capture_viewport_to_file
+    from PIL import Image
+
+    state_dir = root / "out/ros_webrtc_robot129"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    image_path = state_dir / "viewport_probe.png"
+    report_path = state_dir / "viewport_probe.json"
+    image_path.unlink(missing_ok=True)
+    capture_viewport_to_file(viewport, file_path=str(image_path))
+    for _ in range(120):
+        step_once()
+        if image_path.is_file() and image_path.stat().st_size > 1024:
+            break
+    try:
+        with Image.open(image_path) as image:
+            rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
+        luma = 0.2126 * rgb[..., 0] + 0.7152 * rgb[..., 1] + 0.0722 * rgb[..., 2]
+        red = (rgb[..., 0] > 130) & (rgb[..., 0] > rgb[..., 1] * 1.35) & (rgb[..., 0] > rgb[..., 2] * 1.35)
+        valid = float(luma.mean()) > 5 and float(luma.std()) > 3 and float(red.mean()) > 0.0002
+        report = {
+            "status": "PASS" if valid else "FAIL",
+            "resolution": [int(rgb.shape[1]), int(rgb.shape[0])],
+            "mean_luminance": round(float(luma.mean()), 3),
+            "std_luminance": round(float(luma.std()), 3),
+            "red_target_fraction": round(float(red.mean()), 6),
+            "image": str(image_path),
+        }
+    except Exception as exc:
+        report = {"status": "FAIL", "reason": f"{type(exc).__name__}: {exc}", "image": str(image_path)}
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
+def trajectory_seconds(point) -> float:
+    return float(point.time_from_start.sec) + float(point.time_from_start.nanosec) * 1e-9
+
+
+def sample_plan(plan, now: float):
+    elapsed = now - plan["started"]
+    previous_time = 0.0
+    previous = plan["initial"]
+    for point_time, point in zip(plan["times"], plan["points"]):
+        if elapsed <= point_time:
+            fraction = 1.0 if point_time <= previous_time else (elapsed - previous_time) / (point_time - previous_time)
+            fraction = max(0.0, min(1.0, fraction))
+            fraction = fraction * fraction * (3.0 - 2.0 * fraction)
+            return previous + (point - previous) * fraction, False
+        previous_time = point_time
+        previous = point
+    return plan["points"][-1], True
+
+
+def main() -> int:
+    if int(os.environ.get("ROS_DOMAIN_ID", "-1")) != 129:
+        print("[ROBOT129 ROS WEBRTC] FAIL - ROS_DOMAIN_ID must be 129", flush=True)
+        return 2
+
+    root = args.bundle.resolve()
+    settings = carb.settings.get_settings()
+    settings.set("/rtx/background/source/type", 2)
+    settings.set("/rtx/background/source/color", (0.055, 0.065, 0.080))
+    sim = SimulationContext(sim_utils.SimulationCfg(device=args.device, dt=1 / 120, render_interval=4))
+
+    def step_sim():
+        app.update()
+        app.update()
+        sim.step()
+
+    floor = sim_utils.CuboidCfg(
+        size=(4.0, 4.0, 0.05),
+        collision_props=sim_utils.CollisionPropertiesCfg(),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.11, 0.12, 0.14), roughness=0.88),
+    )
+    floor.func("/World/DeepGrayFloor", floor, translation=(0.0, 0.0, -0.025))
+    light = sim_utils.DomeLightCfg(intensity=2800, color=(0.82, 0.84, 0.88), visible_in_primary_ray=False)
+    light.func("/World/Light", light)
+    marker = sim_utils.CuboidCfg(
+        size=(0.035, 0.035, 0.035),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.88, 0.08, 0.04), metallic=0.05),
+    )
+    marker.func("/World/TargetMarker", marker, translation=(0.38, 0.0, 0.45))
+
+    robot = Articulation(
+        ArticulationCfg(
+            prim_path="/World/Robot",
+            spawn=sim_utils.UsdFileCfg(usd_path=str(root / "sim/assets/robot129/robot129/robot129.usda")),
+            actuators={
+                "arm": ImplicitActuatorCfg(
+                    joint_names_expr=["joint[1-6]"], effort_limit_sim=100, stiffness=800, damping=80
+                ),
+                "gripper": ImplicitActuatorCfg(
+                    joint_names_expr=["joint[78]"], effort_limit_sim=10, stiffness=2000, damping=100
+                ),
+            },
+        )
+    )
+    sim.reset()
+    home_tensor = torch.tensor(HOME, dtype=torch.float32, device=sim.device).unsqueeze(0)
+    robot.write_joint_position_to_sim_index(position=home_tensor)
+    robot.write_joint_velocity_to_sim_index(velocity=torch.zeros_like(home_tensor))
+    target = HOME.copy()
+    plans = {"arm": None, "gripper": None, "combined": None}
+    counters = {"accepted": 0, "rejected": 0, "published_states": 0}
+
+    from omni.kit.viewport.utility import get_active_viewport
+
+    viewport = get_active_viewport()
+    if viewport is None:
+        print("[ROBOT129 ROS WEBRTC] FAIL - active viewport unavailable", flush=True)
+        return 3
+    set_live_camera(viewport)
+
+    def advance():
+        robot.write_data_to_sim()
+        step_sim()
+        robot.update(sim.get_physics_dt())
+
+    print(f"[ROBOT129 ROS WEBRTC] WARMING_UP - {args.warmup_frames} rendered frames", flush=True)
+    try:
+        for warmup_index in range(args.warmup_frames):
+            robot.set_joint_position_target_index(target=torch.tensor(target, dtype=torch.float32, device=sim.device).unsqueeze(0))
+            advance()
+    except BaseException as exc:
+        print(f"[ROBOT129 ROS WEBRTC] WARMUP_EXCEPTION index={warmup_index} type={type(exc).__name__} value={exc!r}", flush=True)
+        raise
+    set_live_camera(viewport)
+    for _ in range(15):
+        advance()
+    probe = capture_viewport_probe(root, viewport, advance)
+    print(f"[ROBOT129 ROS WEBRTC] VIEWPORT_PROBE {probe['status']} - {probe}", flush=True)
+    if probe["status"] != "PASS":
+        return 4
+
+    print("[ROBOT129 ROS WEBRTC] VIEWPORT_READY - loading ROS 2 Python runtime", flush=True)
+    import rclpy
+    from rclpy.executors import SingleThreadedExecutor
+    from sensor_msgs.msg import JointState
+    from trajectory_msgs.msg import JointTrajectory
+
+    rclpy.init()
+    node = rclpy.create_node("isaac_articulation_bridge", namespace="/robot129_sim")
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    state_pub = node.create_publisher(JointState, "/robot129_sim/joint_states", 10)
+
+    def make_callback(key: str, expected_names: list[str], indices: list[int]):
+        def callback(msg):
+            nonlocal target
+            reason = None
+            times = []
+            points = []
+            if list(msg.joint_names) != expected_names:
+                reason = f"joint_names must be {expected_names}"
+            elif not msg.points:
+                reason = "trajectory has no points"
+            else:
+                times = [trajectory_seconds(point) for point in msg.points]
+                if any(t <= 0 or t > 30 for t in times) or any(b <= a for a, b in zip(times, times[1:])):
+                    reason = "time_from_start must be strictly increasing in (0, 30] seconds"
+                elif any(len(point.positions) != len(indices) for point in msg.points):
+                    reason = "position count does not match joint_names"
+                else:
+                    points = [np.asarray(point.positions, dtype=np.float64) for point in msg.points]
+                    if not all(np.isfinite(point).all() for point in points):
+                        reason = "positions must be finite"
+                    elif any(
+                        np.any(point < LIMITS[indices, 0]) or np.any(point > LIMITS[indices, 1])
+                        for point in points
+                    ):
+                        reason = "position violates Robot 129 joint limits"
+            if reason is not None:
+                counters["rejected"] += 1
+                print(f"[ROBOT129 ROS WEBRTC] REJECT {key} - {reason}", flush=True)
+                return
+
+            plans[key] = {
+                "started": time.monotonic(),
+                "initial": target[indices].copy(),
+                "times": times,
+                "points": points,
+                "indices": indices,
+            }
+            if key == "combined":
+                plans["arm"] = None
+                plans["gripper"] = None
+            else:
+                plans["combined"] = None
+            counters["accepted"] += 1
+            print(
+                f"[ROBOT129 ROS WEBRTC] ACCEPT {key} sequence={counters['accepted']} duration={times[-1]:.3f}s",
+                flush=True,
+            )
+
+        return callback
+
+    subscriptions = [
+        node.create_subscription(
+            JointTrajectory,
+            "/robot129_sim/arm_controller/joint_trajectory",
+            make_callback("arm", ARM_NAMES, list(range(6))),
+            10,
+        ),
+        node.create_subscription(
+            JointTrajectory,
+            "/robot129_sim/gripper_controller/joint_trajectory",
+            make_callback("gripper", GRIPPER_NAMES, [6]),
+            10,
+        ),
+        node.create_subscription(
+            JointTrajectory,
+            "/robot129_sim/joint_trajectory",
+            make_callback("combined", ACTIVE_NAMES, list(range(7))),
+            10,
+        ),
+    ]
+
+    print("[ROBOT129 ROS WEBRTC] READY", flush=True)
+    print("[ROBOT129 ROS WEBRTC] domain=129 namespace=/robot129_sim hardware_drivers=0", flush=True)
+    print("[ROBOT129 ROS WEBRTC] command=/robot129_sim/arm_controller/joint_trajectory", flush=True)
+    print("[ROBOT129 ROS WEBRTC] command=/robot129_sim/gripper_controller/joint_trajectory", flush=True)
+    print("[ROBOT129 ROS WEBRTC] feedback=/robot129_sim/joint_states", flush=True)
+
+    frame = 0
+    while keep_running and app.is_running():
+        executor.spin_once(timeout_sec=0.0)
+        now = time.monotonic()
+        for key in ("combined", "arm", "gripper"):
+            plan = plans[key]
+            if plan is None:
+                continue
+            values, done = sample_plan(plan, now)
+            target[plan["indices"]] = values
+            if done:
+                plans[key] = None
+                print(f"[ROBOT129 ROS WEBRTC] COMPLETE {key}", flush=True)
+        target[7] = -target[6]
+        robot.set_joint_position_target_index(
+            target=torch.tensor(target, dtype=torch.float32, device=sim.device).unsqueeze(0)
+        )
+        advance()
+        frame += 1
+        if frame % 4 == 0:
+            state = JointState()
+            state.header.stamp = node.get_clock().now().to_msg()
+            state.name = JOINT_NAMES
+            state.position = robot.data.joint_pos.torch[0].detach().cpu().tolist()
+            state.velocity = robot.data.joint_vel.torch[0].detach().cpu().tolist()
+            state_pub.publish(state)
+            counters["published_states"] += 1
+        time.sleep(1 / 120)
+
+    state_dir = root / "out/ros_webrtc_robot129"
+    (state_dir / "session.json").write_text(
+        json.dumps(
+            {
+                "status": "STOPPED",
+                "simulation_only": True,
+                "ros_domain_id": 129,
+                "namespace": "/robot129_sim",
+                "accepted_commands": counters["accepted"],
+                "rejected_commands": counters["rejected"],
+                "published_joint_states": counters["published_states"],
+                "hardware_drivers": 0,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    executor.remove_node(node)
+    node.destroy_node()
+    rclpy.shutdown()
+    return 0
+
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    try:
+        result = main()
+    finally:
+        app.close()
+    raise SystemExit(result)

@@ -1,0 +1,42 @@
+diff --git a/core/CMakeLists.txt b/core/CMakeLists.txt
+index 1b8d21a..a22a3a4 100644
+--- a/core/CMakeLists.txt
++++ b/core/CMakeLists.txt
+@@ -12,7 +12,6 @@ find_package(moveit_core REQUIRED)
+ find_package(moveit_ros_planning REQUIRED)
+ find_package(moveit_ros_planning_interface REQUIRED)
+ find_package(moveit_task_constructor_msgs REQUIRED)
+-find_package(py_binding_tools REQUIRED)
+ find_package(rclcpp REQUIRED)
+ find_package(rviz_marker_tools REQUIRED)
+ find_package(tf2_eigen REQUIRED)
+@@ -27,9 +26,6 @@ set(CMAKE_VISIBILITY_INLINES_HIDDEN TRUE)
+ set(PROJECT_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/include/moveit/task_constructor)
+ 
+ add_subdirectory(src)
+-ament_python_install_package(moveit PACKAGE_DIR python/moveit)
+-add_subdirectory(python)
+-add_subdirectory(test)
+ 
+ install(DIRECTORY include/ DESTINATION include
+ 	PATTERN "*_p.h" EXCLUDE)
+@@ -43,7 +39,6 @@ ament_export_dependencies(moveit_core)
+ ament_export_dependencies(moveit_ros_planning)
+ ament_export_dependencies(moveit_ros_planning_interface)
+ ament_export_dependencies(moveit_task_constructor_msgs)
+-ament_export_dependencies(py_binding_tools)
+ ament_export_dependencies(rclcpp)
+ ament_export_dependencies(rviz_marker_tools)
+ ament_export_dependencies(tf2_eigen)
+diff --git a/core/src/properties.cpp b/core/src/properties.cpp
+index 8c001de..e1ffdcf 100644
+--- a/core/src/properties.cpp
++++ b/core/src/properties.cpp
+@@ -39,6 +39,7 @@
+ #include <moveit/task_constructor/properties.h>
+ #include <moveit/task_constructor/fmt_p.h>
+ #include <functional>
++#include <boost/core/demangle.hpp>
+ #include <rclcpp/logging.hpp>
+ #include <rclcpp/clock.hpp>
+ 

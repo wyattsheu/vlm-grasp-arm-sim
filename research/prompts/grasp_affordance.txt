@@ -1,0 +1,81 @@
+Provenance (AGENTS.md rule: copied snippets need source path, line range,
+and a content hash instead of a git commit since this source is a PDF, not
+a git repo):
+  - Adapted from ZeroDex App. D.2 "Grasp Affordance", from the local text
+    extraction of the paper's HTML/PDF export
+    (sources/zerodex_user_attachment.txt, lines 2277-2291 as read
+    2026-09-19). sha256 of that extraction file:
+    24455163a04378e924311b76fc532d8f2788b5c85a67f18fac27d8073e48852e
+  - This is the paper's own real prompt text (App. D.2 says the model
+    used was gemini-robotics-er-1.6-preview), not a reconstruction —
+    unlike stage_a.txt/stage_b.txt this section of the paper prints its
+    prompts verbatim.
+  - This is NOT that prompt verbatim, three changes:
+    1. Multi-view framing dropped (single wrist camera only, see
+       docs/progress/grasp_motion_progress_report.md "我們的單相機情況" —
+       eq. 9's per-view B_v becomes a single B here; there is no eq.
+       10-11 multi-view voting on this workspace yet).
+    2. Coordinate convention changed from the source's
+       "[y, x] normalized [0,1000]" ALONE for a point to this project's
+       existing coord_norm_max contract already used by stage_b.txt
+       (src/mpg/schema.py pixel_from_norm1000) — same numeric convention,
+       reusing the existing parser instead of a second implementation.
+    3. DELIBERATE DEVIATION, matching stage_b.txt's own deviation from
+       the same paper section: the source prompt has no "I can't find
+       this" escape and always returns an affordance_bbox. AGENTS.md Sec
+       0.1 item 5 requires the opposite for this project — never guess a
+       region for an occluded/ambiguous case. Added an
+       "unavailable" + reason_codes path parallel to stage_b.txt's, using
+       the same REASON_CODES enum (src/mpg/schema.py) rather than a new
+       one.
+
+---
+
+A parallel-jaw robot gripper needs to grasp '{grasp_object}'.
+
+Manipulation task: "{grasp_hint}"
+
+Mark the CONTACT REGION on '{grasp_object}' in THIS image --- the whole
+surface patch the gripper's fingers close around and touch for a stable
+grasp (the handle / grip body), NOT the functional tip or any part this
+task should not touch (a bottle's cap, a hammer's striking head, a
+kettle's spout, a knife's blade, etc.).
+
+This is an AREA, not a point. The box must enclose the full span the
+gripper's fingers would close across, along the object's own graspable
+length, not a single corner or an arbitrarily tiny box. If '{grasp_object}'
+has a distinct handle or narrow grip section, cover that section only —
+not the whole object. If it has no distinct handle (a plain block, cup,
+or box), cover a natural graspable area of its body instead.
+
+Coordinates: normalized [y, x], each in the integer range [0, 1000].
+[0, 0] = the center of the top-left pixel. [1000, 1000] = the center of
+the bottom-right pixel. affordance_bbox is [y1, x1, y2, x2] with
+y1 < y2 and x1 < x2 (top-left corner, then bottom-right corner).
+
+If you CAN identify a contact region for '{grasp_object}' on this image
+with reasonable confidence, set status="localized" and give:
+  - affordance_description: a short phrase naming the region (e.g.
+    "bottle body below the cap", "hammer handle").
+  - affordance_point_yx_norm1000: [y, x], the region's own center.
+  - affordance_bbox_yx_norm1000: [y1, x1, y2, x2] as defined above.
+
+If '{grasp_object}' is not visible, too occluded to tell where its
+graspable region actually is, or has no safely graspable region visible
+in this image, set status="unavailable", affordance_description=null,
+affordance_point_yx_norm1000=null, affordance_bbox_yx_norm1000=null, and
+give at least one reason code. Do NOT invent a box to avoid returning
+"unavailable" --- a wrong region is worse than a typed abstention, because
+a downstream grasp planner cannot tell a guessed box from a real
+observation.
+  Use ONLY these reason codes, choosing every code that applies:
+    TARGET_NOT_VISIBLE, OCCLUDED, OUT_OF_FRAME, UNCERTAIN_LOCALIZATION
+
+Output ONLY this JSON object, no markdown fences, no other text:
+{
+  "status": "localized" | "unavailable",
+  "affordance_description": "<short phrase>" | null,
+  "affordance_point_yx_norm1000": [y, x] | null,
+  "affordance_bbox_yx_norm1000": [y1, x1, y2, x2] | null,
+  "reason_codes": ["..."]
+}

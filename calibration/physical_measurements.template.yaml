@@ -1,0 +1,30 @@
+schema_version: robot129_physical_measurements_v1
+status: EMPTY_TEMPLATE
+measurement_date: null
+measured_by: null
+tools_used: null
+robot:
+  piper_model: null
+  hardware_revision: null
+  gripper_model: null
+  base_mount_pose_on_platform: null
+end_effector:
+  flange_to_tcp: null
+  tcp_definition: null
+  tool_mass_kg: null
+  payload_limit_kg: null
+camera_mount:
+  dimensions_m: null
+  mass_kg: null
+  flange_to_mount: null
+  mount_to_camera_link: null
+  photo_references: []
+workspace:
+  table_height_m: null
+  robot_base_to_table: null
+  static_collision_geometry: []
+uncertainty:
+  linear_m: null
+  angular_rad: null
+notes: []
+

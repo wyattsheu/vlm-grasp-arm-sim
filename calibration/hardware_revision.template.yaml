@@ -1,0 +1,37 @@
+schema_version: robot129_hardware_revision_v1
+status: UNVERIFIED_TEMPLATE
+recorded_at: null
+recorded_by: null
+robot:
+  manufacturer: AgileX
+  product_family: Piper
+  exact_model: null
+  hardware_revision: null
+  serial_number_redacted: null
+  rated_payload_kg: null
+  manufacturing_label_photo: null
+arm:
+  firmware_version: null
+  motor_driver_versions: null
+  joint_zero_reference_procedure: null
+  joint_positive_direction_verified: null
+  installed_urdf_source_commit: null
+gripper:
+  manufacturer: null
+  exact_model: null
+  hardware_revision: null
+  serial_number_redacted: null
+  single_finger_travel_m: null
+  total_opening_width_m: null
+  command_unit: null
+  feedback_unit: null
+mounting:
+  base_mount_revision: null
+  end_effector_stack_description: null
+  camera_bracket_revision: null
+  measured_drawings: []
+provenance:
+  source_host: null
+  evidence_files: []
+  reviewed_by: null
+  reviewed_at: null

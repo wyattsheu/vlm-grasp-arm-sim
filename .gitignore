@@ -1,0 +1,41 @@
+# Build/runtime artifacts -- regenerate with colcon build, never commit
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Third-party ROS packages -- pulled from their own upstream repos, not ours
+ros2_ws/src/external/
+
+# Vendor copies (arm manufacturer's own description package; the meshes we
+# actually use are committed under ros2_ws/src/robot129_description/)
+robot/vendor/
+
+# Run outputs: recordings, logs, VLM response caches, execution reports --
+# regenerated every run, not source
+out/
+research/out/
+research/cache/
+research/logs/
+research/.tmp/
+*.vlm_cache/
+vlm_cache/
+*.mp4
+*.log
+
+# Captured scene bundles used only as local test fixtures for the dashboard
+# renderer -- large binary depth arrays, not something other people building
+# this repo need pulled down by default
+research/data/scenes/*/depth.npy
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor/OS noise
+.DS_Store
+*.swp
+
+# Local env state some tools/*.sh scripts write into the repo by accident
+sim/assets/**/*.usd
+sim/assets/**/*.usda

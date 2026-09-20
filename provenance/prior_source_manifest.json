@@ -1,0 +1,25 @@
+{
+  "date": "2026-09-11",
+  "scope": "Phase 0 read-only source inspection; live-mounted source is not claimed identical to installed process artifacts",
+  "live_arm_repo": {
+    "path": "/home/wyattsheu/workspaces/robotic_agent/mm_system",
+    "head": "583ada7af4d4c52420d82edac34cdec919228712",
+    "container_mount": "/workspace/main_ws"
+  },
+  "live_decision_repo": {
+    "path": "/home/acm/robotic_agent/robotic_system",
+    "head": "7c1f248636ab41c1b4f0b558b45a957bfff1c996",
+    "warning": "dirty tree; second decision container also exists"
+  },
+  "files": [
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/mm_actions_node.py", "sha256": "d1b6bd69fe1f4a5587e4c532c35d128bf10cd3aab2598e21f6731cf4e45922bc"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/reasoning/local_pipeline_client.py", "sha256": "63588c41f718dec5aa842241e9fa7d7b9218b9cf1271d76275ae8ade9ad11a08"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/reasoning/gemini_client.py", "sha256": "39035b0a2eb3b79ea1e3d8dccc5d696eb44eb5bf0f196728f0ad8a460e22361a"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/perception/utils.py", "sha256": "e06dabadb7baa5ca0479816a4ae7d090df5be6cdbabb801c730400b99013f385"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/actions/base_action.py", "sha256": "41ecc826be0a022da58f76db6c2d6c672d9a50250a3227799c7992d0843730be"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/actions/grasp.py", "sha256": "d716344b2a4f4b2a2556973c8125db00ca5bc0756fb97750741f17c13332fcc9"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/actions/place.py", "sha256": "d2b0f2469c1abf994b37764de2e9e3858cc0ac15f0c8dde2d17cacb68a81f024"},
+    {"path": "/home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/motion/piper_kinematic.py", "sha256": "8c9b8fc6d841438e15b412d84da1b1a1ca69e18526458c8e8e3c9be0a57b25ca"},
+    {"path": "/home/wyattsheu/workspaces/temp/production_client/local_pipeline_client.py", "sha256": "5261f48005631c3d5cabc1120693ef03acec8e48c781d411a196518e5fe6b79d", "role": "older standalone comparison"}
+  ]
+}

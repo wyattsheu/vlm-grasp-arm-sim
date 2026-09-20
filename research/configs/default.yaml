@@ -1,0 +1,65 @@
+# Phase 2 grounding schema and prompt-pipeline parameters.
+# No magic numbers in code (AGENTS.md coding standards); everything a
+# reviewer might want to tune during dev lives here instead.
+
+schema:
+  version: "0"
+  # Coordinate convention for point_yx_norm1000: normalized [0, 1000] on
+  # each axis, endpoints at the centers of the first/last pixel. This
+  # matches ZeroDex/Gemini Robotics-ER's [y, x] * 1000 convention.
+  coord_norm_max: 1000
+
+generation:
+  temperature: 0.0
+  max_tokens: 1024
+
+# Grid proposal is a MOKA-inspired ablation, not object segmentation.
+candidates:
+  rows: 6
+  columns: 8
+  seed: 129
+
+parsing:
+  # AGENTS.md rule 17 / prompt_strategy.md: format failures get exactly one
+  # retry with a format reminder; a correct abstention is never retried.
+  max_format_retries: 1
+  # Strip at most one layer of Markdown code fence before JSON parsing.
+  max_fence_strip_layers: 1
+
+coordinate_adapter:
+  # New contract (this project): x_px = x_norm1000 / 1000 * (W - 1),
+  # y_px = y_norm1000 / 1000 * (H - 1). Never index W or H directly.
+  new:
+    id: "w_minus_1_h_minus_1"
+  # Legacy contract (existing gemini_client.py reproduction only):
+  # x_px = x_norm1000 / 1000 * W, y_px = y_norm1000 / 1000 * H.
+  # Source: mm_system/.../reasoning/gemini_client.py (see 00_system_recon.md).
+  legacy:
+    id: "w_h_legacy"
+
+# Phase 3: single-view RGB-D lifting + collision-aware refinement.
+# Values marked "dev start" are docs/data_and_evaluation.md's placeholder
+# starting points, not measured/calibrated — do not treat them as
+# validated until Phase 4 tuning. Values marked "UNVERIFIED" have no
+# source at all yet and must not be relied on for anything but offline
+# dev testing on synthetic data.
+lifting:
+  depth:
+    window_k: 7  # AGENTS.md Phase 3 task 2; legacy system uses 11
+    statistic: "median"  # legacy system uses mean (perception/utils.py)
+    valid_fraction_min: 0.5  # dev start
+    # Legacy reproduction bounds only (mm_system perception/utils.py);
+    # NOT a confirmed usable range for this camera/mount. UNVERIFIED.
+    legacy_range_m: [0.1, 3.0]
+  table_ransac:
+    distance_threshold_m: 0.005  # dev start
+    max_iterations: 200  # UNVERIFIED, not in docs/data_and_evaluation.md
+    min_inlier_fraction: 0.3  # UNVERIFIED
+  object_height:
+    radius_m: 0.05  # UNVERIFIED — not measured against real object sizes
+  release_clearance_m: 0.01  # dev start
+  waypoint_clearance_m: 0.03  # dev start (docs table calls this "transport clearance")
+  corridor_r_m: 0.05  # UNVERIFIED — AGENTS.md Phase 3 names this parameter but gives no number
+  refine:
+    radius_m: 0.04  # ZeroDex Eq. 12 / App D.1 reference value
+    step_m: 0.02  # ZeroDex Eq. 12 / App D.1 reference value

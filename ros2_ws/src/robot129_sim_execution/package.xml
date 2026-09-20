@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>robot129_sim_execution</name>
+  <version>0.1.0</version>
+  <description>
+    Simulation-only FollowJointTrajectory adapter bridging MoveIt/MTC (or any
+    control_msgs/action/FollowJointTrajectory client) to the live Isaac Robot 129
+    JointTrajectory topics, since that runner has no action server of its own.
+    See docs/progress/grasp_motion_s0_inventory.md and the grasp/motion plan.
+  </description>
+  <maintainer email="wyattsheu@example.com">Robot 129</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>control_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>ament_index_python</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

@@ -1,0 +1,7 @@
+simulation_only: true
+planning_group: arm
+end_effector: robot129_gripper
+tcp_frame: tcp
+stages: [current_state, approach, grasp, close, lift, waypoint, preplace, release, retreat]
+collision_policy: check_arm_camera_payload_full_path
+execution_namespace: /robot129_sim

@@ -1,0 +1,62 @@
+schema_version: robot129_vlm_source_inventory_v1
+status: MISSING_SOURCE_INVENTORY
+captured_at: null
+source_host: robot129_thor
+architecture: aarch64
+runtime:
+  deployment_kind: container_or_user_space
+  container_names:
+    qwen: local_pipeline_stage1_qwen
+    molmo: local_pipeline_stage2_molmo2
+  image_references: {qwen: null, molmo: null}
+  image_digests: {qwen: null, molmo: null}
+  launch_commands_redacted: {qwen: null, molmo: null}
+  mounted_model_paths_redacted: {qwen: null, molmo: null}
+versions:
+  jetson_linux: null
+  jetpack: null
+  cuda: null
+  python: null
+  pytorch: null
+  vllm: null
+  transformers: null
+models:
+  qwen:
+    model_id: Qwen/Qwen3-VL-4B-Instruct
+    exact_revision: null
+    served_model_name: null
+    endpoint: http://127.0.0.1:8000/v1
+  molmo:
+    model_id: allenai/Molmo2-4B
+    exact_revision: null
+    served_model_name: null
+    endpoint: http://127.0.0.1:8002/v1
+serving:
+  dtype: null
+  quantization: null
+  tensor_parallel_size: null
+  gpu_memory_utilization: null
+  max_model_len: null
+  limit_mm_per_prompt: null
+  trust_remote_code: null
+  chat_template_hash: null
+  generation_defaults: {temperature: 0.0, max_tokens: 1024}
+api_contract:
+  endpoint_path: /v1/chat/completions
+  image_transport: data_url_or_url
+  request_example_redacted: null
+  response_example_redacted: null
+  point_coordinate_convention: null
+  timeout_s: null
+  retry_policy: null
+  healthcheck: null
+security:
+  bind_address: null
+  network_scope: null
+  reverse_proxy: null
+  api_key_variable_name_only: null
+  secret_values_collected: false
+provenance:
+  live_source_commit: null
+  installed_artifact_hash: null
+  inventory_command_log: null

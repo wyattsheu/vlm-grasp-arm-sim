@@ -1,0 +1,30 @@
+schema_version: robot129_extrinsics_v1
+status: LEGACY_CANDIDATE_UNVERIFIED
+legacy_candidate:
+  name_in_source: ee_T_cam
+  matrix:
+    - [0.12045728, 0.99241666, 0.02447911, -0.07102005]
+    - [-0.99265611, 0.12068956, -0.00823890, 0.02413094]
+    - [-0.01113080, -0.02330690, 0.99966639, -0.09727718]
+    - [0.0, 0.0, 0.0, 1.0]
+  source_path: /home/wyattsheu/workspaces/robotic_agent/mm_system/main_ws/src/mm_actions/mm_actions/actions/base_action.py
+  source_lines: 167-172
+  source_file_sha256_from_prior_recon: 41ecc826be0a022da58f76db6c2d6c672d9a50250a3227799c7992d0843730be
+  warning: The source variable name does not prove the exact URDF parent link, camera optical frame, calibration method, or uncertainty.
+required_resolution:
+  parent_frame: null
+  child_frame: null
+  transform_direction: null
+  quaternion_order: xyzw
+  translation_unit: meter
+  calibration_method: null
+  calibrated_at: null
+  translation_error_m: null
+  rotation_error_rad: null
+  validation_dataset: null
+simulation_use_allowed: false
+enable_after:
+  - Confirm the FK end-effector frame used by the source.
+  - Confirm whether the child is color optical, depth optical, or another camera frame.
+  - Validate known 3D points by projection and deprojection.
+

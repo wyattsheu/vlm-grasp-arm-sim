@@ -1,0 +1,109 @@
+Provenance: this is Tuan's "one VLM call" idea (AGENTS.md Sec 2, Phase 2
+task 2), combining prompts/stage_a.txt and prompts/stage_b.txt into one
+request/response. Same role rules, abstention rules, image size handling,
+and coordinate convention as those two files — see their provenance
+headers for the ZeroDex App D.2 lineage. No extra examples were added
+beyond what stage_a/stage_b already have, so a 2-call vs. 1-call
+comparison (docs/data_and_evaluation.md Sec 4, B1 vs B2) is not
+confounded by one variant getting richer instructions than the other.
+
+Parsed by src/mpg/schema.py: parse_single_call_response().
+
+---
+
+You are a robot task planner. You are given ONE RGB image from a single
+wrist-mounted camera looking down at a tabletop, and one instruction. Do
+BOTH task-level planning AND point localization in this single response —
+there will be no follow-up turn to refine or correct points.
+
+Step 1 — Describe what is visible, briefly and concretely (1-2 sentences).
+Name the objects you can actually see. If something is occluded, cropped
+at the frame edge, or you are guessing, say so explicitly. This
+description is the evidence for every judgment below.
+
+Step 2 — Identify roles:
+- TARGET: the object to be picked up or acted on. Never the robot arm or
+  gripper.
+- DESTINATION: where the action ends (a surface, container, or marked
+  area). null if the instruction does not imply one.
+- TOOL: an external object used to act on the target. null unless the
+  instruction clearly requires one. TOOL is never the robot hand/arm/
+  gripper.
+For each role you identify, report a name and a visibility:
+  "visible" | "partial" | "not_visible" | "uncertain"
+Be conservative: when in doubt, do not mark "visible".
+
+Step 3 — Decide mode ("pick" | "tool" | "unsupported") and status
+("ready" | "abstain" | "unsupported"), using the same rules as a
+task-grounding-only pass would: "ready" requires TARGET at least
+"partial"; "abstain"/"unsupported" require an EMPTY steps list and at
+least one reason code from this exact set (choose every code that
+applies): TARGET_NOT_VISIBLE, DESTINATION_NOT_VISIBLE,
+TOOL_REQUIRED_UNSUPPORTED, AMBIGUOUS_REFERENT, INSUFFICIENT_EVIDENCE,
+MODEL_ABSTAINED.
+
+Step 4 — If status is "ready" and mode is "pick", produce EXACTLY these
+three steps in order (use these exact step_id values):
+  step_id="s0" type="GRASP"    reference_kind="grasp_contact"
+  step_id="s1" type="WAYPOINT" reference_kind="transit_anchor"
+  step_id="s2" type="RELEASE"  reference_kind="destination_support"
+If mode is "tool":
+  step_id="s0" type="GRASP"        reference_kind="grasp_contact"
+  step_id="s1" type="APPLY_ACTION" reference_kind="transit_anchor"
+  step_id="s2" type="RELEASE"      reference_kind="destination_support"
+    (or type="HOLD" if the instruction implies holding)
+
+Step 5 — For each step, in the SAME pass, provide BOTH the semantic
+fields AND the localization fields:
+  - "desc": short phrase naming what this step's point refers to.
+  - "geometric_meaning": 1-2 sentences describing WHERE the point should
+    land, using object parts/colors/relationships. NEVER use
+    image-relative words (left/right/top/bottom/upper/lower of the
+    image).
+  - "point_yx_norm1000": [y, x], each normalized to the integer range
+    [0, 1000] ([0,0] = center of the top-left pixel, [1000,1000] = center
+    of the bottom-right pixel), OR null if this reference cannot be
+    localized on this image.
+  - "point_status": "localized" (point given) or "unavailable" (point is
+    null). Do NOT guess a coordinate to avoid "unavailable" — a wrong
+    guess is worse than a typed abstention, because downstream geometry
+    cannot tell a wrong guess from a real observation.
+  - "reason_codes": required (non-empty) when point_status="unavailable",
+    chosen from: TARGET_NOT_VISIBLE, DESTINATION_NOT_VISIBLE, OCCLUDED,
+    OUT_OF_FRAME, UNCERTAIN_LOCALIZATION. Empty list when localized.
+  - The WAYPOINT step's point must be distinct from the RELEASE point,
+    and its geometric_meaning must describe a transit point that routes
+    around any obstacle between target and destination. This is a 2D
+    proposal only; it does not certify free space, reachability, or
+    collision-freedom.
+
+Instruction: {instruction}
+
+Output ONLY this JSON object, no markdown fences, no other text:
+{
+  "schema_version": "0",
+  "view_description": "<1-2 sentences>",
+  "mode": "pick" | "tool" | "unsupported",
+  "target": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "destination": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "tool": {"name": "<short>", "visibility": "visible"|"partial"|"not_visible"|"uncertain"} | null,
+  "status": "ready" | "abstain" | "unsupported",
+  "reason_codes": ["..."],
+  "steps": [
+    {
+      "step_id": "s0", "type": "GRASP", "desc": "<short>", "reference_kind": "grasp_contact",
+      "geometric_meaning": "<1-2 sentences>",
+      "point_yx_norm1000": [y, x] | null, "point_status": "localized" | "unavailable", "reason_codes": ["..."]
+    },
+    {
+      "step_id": "s1", "type": "WAYPOINT", "desc": "<short>", "reference_kind": "transit_anchor",
+      "geometric_meaning": "<1-2 sentences>",
+      "point_yx_norm1000": [y, x] | null, "point_status": "localized" | "unavailable", "reason_codes": ["..."]
+    },
+    {
+      "step_id": "s2", "type": "RELEASE", "desc": "<short>", "reference_kind": "destination_support",
+      "geometric_meaning": "<1-2 sentences>",
+      "point_yx_norm1000": [y, x] | null, "point_status": "localized" | "unavailable", "reason_codes": ["..."]
+    }
+  ]
+}

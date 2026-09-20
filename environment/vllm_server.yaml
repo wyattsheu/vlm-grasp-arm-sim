@@ -1,0 +1,47 @@
+schema_version: robot129_vllm_server_v1
+status: INSTALLED_MODEL_CACHED_SERVICE_STOPPED
+runtime:
+  environment: /mnt/HDD4/wyattsheu/env_robot129_vllm
+  python: 3.12.14
+  vllm: 0.29.0
+  pytorch: 2.13.0+cu132
+  cuda_runtime: '13.2'
+  transformers: 5.17.0
+model:
+  id: Qwen/Qwen3-VL-8B-Instruct
+  revision: 0c351dd01ed87e9c1b53cbc748cba10e6187ff3b
+  snapshot_path: /mnt/HDD4/wyattsheu/models/robot129_vllm/huggingface/hub/models--Qwen--Qwen3-VL-8B-Instruct/snapshots/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b
+  downloaded_size: 17.5GB
+  served_names: [qwen-vl, decision-qwen]
+  role: upper_level_decision_and_vlm_learning
+  required_for_arm_joint_control: false
+  publishes_joint_commands: false
+serving:
+  bind: 127.0.0.1
+  port: 8001
+  endpoint: http://127.0.0.1:8001/v1/chat/completions
+  dtype: bfloat16
+  gpu_policy: least_loaded_at_start
+  gpu_memory_utilization: 0.30
+  max_model_len: 8192
+  max_num_seqs: 1
+  limit_mm_per_prompt: {image: 1, video: 0}
+  generation_config: vllm
+  flashinfer_sampler: disabled_for_sm120_compatibility
+  offline_after_download: true
+lifecycle:
+  autostart: false
+  keep_alive_after_demo: false
+  start: bash tools/start_robot129_vllm.sh
+  status: bash tools/status_robot129_vllm.sh
+  stop: bash tools/stop_robot129_vllm.sh
+  smoke_and_stop: bash tools/demo_robot129_vllm.sh
+verification:
+  smoke_test: PASS
+  report: out/vllm_robot129/smoke_test.json
+  arm_integration: NOT_APPLICABLE
+  strict_scene_grounding: UNVERIFIED
+legacy_mm_profile:
+  status: NOT_DOWNLOADED
+  stage1: {model: Qwen/Qwen3-VL-4B-Instruct, size: 8.9GB, port: 8000}
+  stage2: {model: allenai/Molmo2-4B, size: 19.4GB, port: 8002}

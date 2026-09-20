@@ -1,0 +1,13 @@
+# Minimal non-ROS dependencies inferred from the packaged offline MPG code.
+# Resolve and lock versions on the PRO 6000 after its Python/ROS plan is selected.
+numpy>=1.26
+Pillow>=10
+PyYAML>=6
+requests>=2.31
+
+# Optional: label_scene.py interactive UI
+# opencv-python
+
+# capture_scene.py uses the selected ROS 2 distribution's rclpy,
+# sensor_msgs, tf2_ros, message_filters and must not be installed from PyPI.
+

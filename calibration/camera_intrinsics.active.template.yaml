@@ -1,0 +1,45 @@
+schema_version: robot129_camera_intrinsics_v1
+status: UNVERIFIED_TEMPLATE
+camera_role: wrist_rgbd
+device:
+  manufacturer: Intel
+  family_from_project_context: RealSense D435i
+  exact_model_and_revision: null
+streams:
+  color:
+    width: null
+    height: null
+    fps: null
+    encoding: null
+  aligned_depth_to_color:
+    width: null
+    height: null
+    fps: null
+    encoding: null
+    depth_scale_m: null
+camera_info:
+  frame_id: null
+  distortion_model: null
+  k: null
+  d: null
+  r: null
+  p: null
+launch_default_reference_only:
+  color_profile: 1280x720x15
+  depth_profile: 848x480x15
+  align_depth_enable: true
+  warning: These are source launch defaults, not measured aligned-output dimensions or calibration.
+simulation_mapping:
+  depth_quantity_required_by_current_lifting: optical_axis_z
+  rgb_depth_same_pixel_grid_required: true
+  ros_color_topic: /camera/color/image_raw
+  ros_depth_topic: /camera/aligned_depth_to_color/image_raw
+  ros_camera_info_topic: /camera/aligned_depth_to_color/camera_info
+provenance:
+  capture_id: null
+  captured_at: null
+  source_host: null
+  calibration_file_hash: null
+review:
+  reviewed_by: null
+  reviewed_at: null

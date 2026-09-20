@@ -1,0 +1,79 @@
+Robot 129 PRO 6000 server environment inventory
+captured_utc=2026-09-13T15:26:38Z
+
+[architecture]
+x86_64
+Linux 6.14.0-37-generic
+
+[processor]
+Architecture:                            x86_64
+CPU(s):                                  32
+On-line CPU(s) list:                     0-31
+Model name:                              AMD Ryzen Threadripper PRO 7955WX 16-Cores
+Thread(s) per core:                      2
+Core(s) per socket:                      16
+Socket(s):                               1
+
+[os-release]
+PRETTY_NAME="Ubuntu 24.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.3 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+
+[glibc]
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
+
+[gpu]
+NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97887 MiB, 580.126.09
+NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97887 MiB, 580.126.09
+
+[memory]
+               total        used        free      shared  buff/cache   available
+Mem:           251Gi        43Gi       6.7Gi       7.1Gi       210Gi       207Gi
+Swap:          8.0Gi       486Mi       7.5Gi
+
+[workspace-disk]
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd1        28T   14T   12T  54% /mnt/HDD4
+
+[python]
+/usr/bin/python3
+Python 3.12.3
+
+[uv]
+/mnt/HDD4/wyattsheu/.local/bin/uv
+uv 0.12.11 (x86_64-unknown-linux-gnu)
+
+[docker]
+Docker version 28.5.1, build e180ab8
+docker daemon UNAVAILABLE to current user
+
+[apptainer-singularity]
+apptainer version 1.4.5
+apptainer version 1.4.5
+
+[nvidia-container-toolkit]
+NVIDIA Container Toolkit CLI version 1.18.0
+commit: f8daa5e26de9fd7eb79259040b6dd5a52060048c
+cli-version: 1.18.0
+lib-version: 1.18.0
+build date: 2025-10-21T09:15+00:00
+build revision: 889a3bb5408c195ed7897ba2cb8341c7d249672f
+build compiler: x86_64-linux-gnu-gcc-7 7.5.0
+build platform: x86_64
+build flags: -D_GNU_SOURCE -D_FORTIFY_SOURCE=2 -DNDEBUG -std=gnu11 -O2 -g -fdata-sections -ffunction-sections -fplan9-extensions -fstack-protector -fno-strict-aliasing -fvisibility=hidden -Wall -Wextra -Wcast-align -Wpointer-arith -Wmissing-prototypes -Wnonnull -Wwrite-strings -Wlogical-op -Wformat=2 -Wmissing-format-attribute -Winit-self -Wshadow -Wstrict-prototypes -Wunreachable-code -Wconversion -Wsign-conversion -Wno-unknown-warning-option -Wno-format-extra-args -Wno-gnu-alignof-expression -Wl,-zrelro -Wl,-znow -Wl,-zdefs -Wl,--gc-sections
+
+[ros2]
+ros2 UNAVAILABLE in current shell
+
+[isaac-sim]
+isaac-sim.sh UNAVAILABLE in PATH

@@ -1,0 +1,20 @@
+{
+  "annotation_version": "bbox_v1",
+  "coordinate_convention": "pixel_xyxy_inclusive",
+  "annotator": "",
+  "instruction_validity": "VALID",
+  "target": {
+    "instance_id": "target_0",
+    "bbox_xyxy": null,
+    "visibility": "VISIBLE",
+    "acceptable_grasp_regions": []
+  },
+  "destination": {
+    "instance_id": "destination_0",
+    "bbox_xyxy": null,
+    "visibility": "VISIBLE",
+    "acceptable_release_regions": []
+  },
+  "obstacles": [],
+  "notes": ""
+}

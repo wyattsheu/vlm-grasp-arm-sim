@@ -1,0 +1,49 @@
+schema_version: handoff_source_selection_v1
+created_at: 2026-09-13
+bundle_name: robot129_pro6000_sim_20260913
+source_workspace:
+  path: /home/wyattsheu/workspaces/next_arm_tesk
+  head: 358fcc2963d874a097546f494859e88ef1c1cc71
+  worktree_status: DIRTY
+  note: Selected files are identified by bundle SHA256SUMS; HEAD alone does not identify modified or untracked files.
+piper_source:
+  path: /home/wyattsheu/workspaces/robotic_agent/mm_system/piper_ros
+  repo_head_from_prior_recon: 583ada7af4d4c52420d82edac34cdec919228712
+  worktree_status_from_prior_recon: DIRTY
+  included:
+    - src/piper_description/CMakeLists.txt
+    - src/piper_description/package.xml
+    - src/piper_description/urdf/piper_description.urdf
+    - src/piper_description/urdf/piper_description.xacro
+    - src/piper_description/meshes/*.STL
+    - src/piper_moveit/piper_with_gripper_moveit/config/*
+    - LICENSE
+  excluded:
+    - Piper SDK and CAN drivers
+    - ROS launch files
+    - Gazebo plugins and launch files
+    - MuJoCo models and control scripts
+research_selection:
+  included:
+    - src/mpg
+    - prompts
+    - configs
+    - tests
+    - selected offline and subscriber-only scripts
+    - selected architecture and interface documents
+  excluded:
+    - .env and credentials
+    - cache and VLM responses
+    - logs
+    - out and experimental artifacts
+    - .venv and Python bytecode
+    - ROS build/install/log directories
+    - reports, slide decks, and unrelated reference PDFs
+    - model weights
+validation:
+  offline_unit_tests: 108_PASS
+  simulation: NOT_RUN
+  isaac_import: NOT_RUN
+  ros2: NOT_RUN
+  real_hardware: NOT_RUN
+
