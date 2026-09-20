@@ -1,0 +1,30 @@
+{
+  "schema_version": "scene_manifest_v1",
+  "_provenance": "usd_path values are NVIDIA's official Isaac Sim asset CDN, verified reachable (HTTP 200) 2026-09-20 via curl -I against https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1/Isaac/... -- the same base URL Isaac Lab itself resolves from apps/isaaclab.python.kit's persistent.isaac.asset_root.default when ISAACSIM_ASSET_ROOT is unset. Not a random internet download.",
+  "objects": [
+    {
+      "id": "mug",
+      "kind": "usd_asset",
+      "usd_path": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1/Isaac/Props/YCB/Axis_Aligned/025_mug.usd",
+      "xy_m": [0.20, 0.15],
+      "z_m": 0.05,
+      "yaw_rad": 0.0
+    },
+    {
+      "id": "cracker_box",
+      "kind": "usd_asset",
+      "usd_path": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd",
+      "xy_m": [0.15, -0.12],
+      "z_m": 0.05,
+      "yaw_rad": 0.4
+    },
+    {
+      "id": "distractor_block",
+      "kind": "primitive_box",
+      "size_m": [0.04, 0.04, 0.04],
+      "color_rgb": [0.3, 0.3, 0.35],
+      "xy_m": [0.42, 0.12],
+      "z_m": 0.02
+    }
+  ]
+}

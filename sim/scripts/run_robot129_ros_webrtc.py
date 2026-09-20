@@ -51,6 +51,18 @@ parser.add_argument(
          "kinematic 'head' box riding along for a two-part shape a real camera can see).",
 )
 parser.add_argument(
+    "--scene-manifest", default="",
+    help="Optional path to a scene_manifest_v1 JSON (see "
+         "docs/dev_guide_paper_core_and_dashboard_plan.md §5) listing extra static "
+         "clutter objects (primitive boxes or NVIDIA-asset USD props) to spawn around "
+         "the --scene target object. Only additive to --scene pick_place/pick_place_hammer; "
+         "does not change the grasp target, floor, or place marker. Every manifest object "
+         "is spawned kinematic/static (never falls, never physically interacts) -- this is "
+         "a visual/distractor clutter layer, not new graspable targets, and deliberately "
+         "does not touch the table_z_m=0.0 assumption baked into "
+         "research/src/mpg/grasp_candidates.py and the MTC collision setup.",
+)
+parser.add_argument(
     "--record-only", action="store_true",
     help="Skip the interactive viewport / WebRTC probe path; use an offscreen recording "
          "camera instead. Launch without --livestream when using this flag.",
@@ -244,6 +256,74 @@ def yaw_to_quat_xyzw(yaw: float):
     return (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
 
 
+def spawn_clutter_from_manifest(manifest_path: str) -> list:
+    """--scene-manifest support (see the arg's help text and docs/dev_guide_
+    paper_core_and_dashboard_plan.md §5): spawn each listed object as a static,
+    kinematic prop -- a distractor clutter layer, not a new graspable target.
+    Returns the list of spawned RigidObject handles (nothing currently reads
+    them back; kept so a future manifest field, e.g. per-object pose reset on
+    reset_scene, has something to hold onto without re-deriving prim paths).
+
+    kind="primitive_box": a flat-shaded box, no external asset needed.
+    kind="usd_asset": loads usd_path as-is (NVIDIA's Isaac asset CDN paths,
+    e.g. Isaac/Props/YCB/Axis_Aligned/025_mug.usd, verified reachable
+    2026-09-20 -- see the dev guide for the checked list). Isaac fetches and
+    locally caches USD files referenced this way; the first spawn of a given
+    asset may take longer while it downloads.
+    """
+    manifest = json.loads(Path(manifest_path).read_text())
+    spawned = []
+    for i, obj in enumerate(manifest.get("objects", [])):
+        obj_id = obj.get("id", f"clutter_{i}")
+        prim_path = f"/World/Clutter/{obj_id}"
+        xy = obj.get("xy_m", [0.0, 0.0])
+        z = float(obj.get("z_m", 0.05))
+        yaw = float(obj.get("yaw_rad", 0.0))
+        kind = obj.get("kind", "primitive_box")
+
+        if kind == "primitive_box":
+            size = tuple(obj.get("size_m", [0.05, 0.05, 0.05]))
+            color = tuple(obj.get("color_rgb", [0.5, 0.5, 0.5]))
+            spawn_cfg = sim_utils.CuboidCfg(
+                size=size,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, metallic=0.05),
+            )
+        elif kind == "usd_asset":
+            usd_path = obj["usd_path"]
+            scale = tuple(obj.get("scale", [1.0, 1.0, 1.0]))
+            spawn_cfg = sim_utils.UsdFileCfg(
+                usd_path=usd_path, scale=scale,
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
+            )
+        else:
+            print(f"[ROBOT129 ROS WEBRTC] SCENE_MANIFEST skipping {obj_id}: unknown kind={kind!r}", flush=True)
+            continue
+
+        rigid_obj = RigidObject(
+            RigidObjectCfg(
+                prim_path=prim_path, spawn=spawn_cfg,
+                init_state=RigidObjectCfg.InitialStateCfg(
+                    pos=(xy[0], xy[1], z), rot=yaw_to_quat_xyzw_wxyz(yaw),
+                ),
+            )
+        )
+        spawned.append(rigid_obj)
+        print(f"[ROBOT129 ROS WEBRTC] SCENE_MANIFEST spawned {obj_id} kind={kind} at xy={xy}", flush=True)
+    return spawned
+
+
+def yaw_to_quat_xyzw_wxyz(yaw: float):
+    """RigidObjectCfg.InitialStateCfg.rot wants (w, x, y, z), unlike the
+    ROS-facing yaw_to_quat_xyzw() above which returns (x, y, z, w) -- kept as
+    a separate small helper rather than a shared one to avoid silently
+    reordering the ROS-facing convention everything else in this file uses."""
+    half = yaw / 2.0
+    return (math.cos(half), 0.0, 0.0, math.sin(half))
+
+
 def main() -> int:
     if int(os.environ.get("ROS_DOMAIN_ID", "-1")) != 129:
         print("[ROBOT129 ROS WEBRTC] FAIL - ROS_DOMAIN_ID must be 129", flush=True)
@@ -329,6 +409,8 @@ def main() -> int:
             "/World/PlaceZoneMarker", place_marker,
             translation=(PLACE_XY_DEFAULT[0], PLACE_XY_DEFAULT[1], 0.001),
         )
+        if args.scene_manifest:
+            spawn_clutter_from_manifest(args.scene_manifest)
         left_contact = ContactSensor(
             ContactSensorCfg(
                 prim_path="/World/Robot/link7", update_period=0, history_length=1,

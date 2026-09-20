@@ -257,60 +257,50 @@ YCB 是機器人抓取研究的標準資料集（馬克杯、洋芋片盒、電�
 
 **建議的具體組合**：`SeattleLabTable`（桌子）當背景平面，取代目前的純平面地板；`Simple_Warehouse`（雜亂）或什麼都不放（乾淨背景，只留桌子）依你要多雜亂決定；桌上散幾個 YCB 物件當干擾物，其中一個當抓取目標；一個簡單的綠色 pad（沿用現有 `pick_place` 場景已經有的放置區標記）當放置處。
 
-**這步我還沒動 `sim/scripts/run_robot129_ros_webrtc.py` 的程式碼**——實際把這些 USD 路徑接進場景 spawn 邏輯，需要重啟 Isaac 來測試（會中斷你現在在看的直播畫面），想先確認你要哪個組合再動工。也還沒實際下載/快取這些 USD 檔案到本地（每個檔案大小未知，第一次載入時 Isaac 會自動從這個 CDN 抓，之後有本地快取）。
+### 5.2 已實作＋對 live Isaac 驗證：`--scene-manifest`
 
-### 5.2 建議規範：場景清單 (scene manifest) JSON
-
-比照這輪已經建立的 `scene_geometry.json` 單一事實來源模式，擴充成一個更通用的「場景清單」格式，新增 `--scene-manifest <path.json>` 參數（跟現有 `--scene` 分支並存，不砍掉舊行為）：
+`sim/scripts/run_robot129_ros_webrtc.py` 新增 `--scene-manifest <path.json>` 參數，只對 `--scene pick_place`/`pick_place_hammer` 生效，純粹「附加」——不改抓取目標、不改地板、不改放置點，manifest 裡的每個物體一律 spawn 成 kinematic/static（不會掉落、不參與物理碰撞的動力學運算），純粹是視覺／干擾雜物層，刻意不去動 `grasp_candidates.py`／MTC 碰撞已經驗證過的 `table_z_m=0.0` 假設。
 
 ```jsonc
-// research/configs/scenes/cluttered_lab_01.json（範例，路徑已是 §5.1b 實際探測過存在的 NVIDIA 官方資產，尚未實作 loader）
+// research/configs/scenes/cluttered_desk_01.json（已提交，對 live Isaac 驗證過）
 {
   "schema_version": "scene_manifest_v1",
-  "background": {
-    "type": "usd_stage",
-    "usd_path": "omniverse://<cdn-root>/Isaac/Props/Mounts/SeattleLabTable/table_instanceable.usd"
-  },
   "objects": [
     {
-      "id": "target_cube",              // 對應既有的 topic/prim 命名，保持相容
-      "kind": "primitive_box",          // 或 "usd_asset"
-      "size_m": [0.035, 0.035, 0.035],
-      "xy_m": [0.32, 0.0],
-      "color_rgb": [0.88, 0.08, 0.04],
-      "mass_kg": 0.08,
-      "graspable": true                 // 給候選生成器/task_region 用
+      "id": "mug", "kind": "usd_asset",
+      "usd_path": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1/Isaac/Props/YCB/Axis_Aligned/025_mug.usd",
+      "xy_m": [0.20, 0.15], "z_m": 0.05, "yaw_rad": 0.0
     },
     {
-      "id": "distractor_mug",
-      "kind": "usd_asset",
-      "usd_path": "omniverse://<cdn-root>/Isaac/Props/YCB/Axis_Aligned/025_mug.usd",
-      "xy_m": [0.20, 0.15],
-      "graspable": false                // 只是雜物，不是抓取目標
+      "id": "cracker_box", "kind": "usd_asset",
+      "usd_path": "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/6.1/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd",
+      "xy_m": [0.15, -0.12], "z_m": 0.05, "yaw_rad": 0.4
     },
     {
-      "id": "distractor_cracker_box",
-      "kind": "usd_asset",
-      "usd_path": "omniverse://<cdn-root>/Isaac/Props/YCB/Axis_Aligned/003_cracker_box.usd",
-      "xy_m": [0.15, -0.10],
-      "graspable": false
+      "id": "distractor_block", "kind": "primitive_box",
+      "size_m": [0.04, 0.04, 0.04], "color_rgb": [0.3, 0.3, 0.35],
+      "xy_m": [0.42, 0.12], "z_m": 0.02
     }
   ]
 }
 ```
 
-**每次測試想換物品**：不用改程式碼，寫一個新的 manifest JSON（或用小腳本產生隨機擺放的 manifest），跑：
+`usd_path` 用的是 https 直連，不是 `omniverse://` 協議——查了 IsaacLab 自己怎麼解析資產根目錄（`isaaclab/utils/assets.py` 的 `ISAAC_NUCLEUS_DIR`），沒設 `ISAACSIM_ASSET_ROOT` 環境變數時，它自己也是從 `apps/isaaclab.python.kit` 讀出同一個 S3 URL 當預設值——這台機器對這個網域真的有連線（前一版寫「查證過 HTTP 200」但沒接進程式碼，這版已經接上並實際 spawn 成功）。
+
+**怎麼用**：
 ```bash
-bash tools/start_robot129_grasp_sim.sh --scene-manifest research/configs/scenes/cluttered_lab_01.json
+bash tools/start_robot129_ros_webrtc.sh --scene pick_place --scene-manifest "$(pwd)/research/configs/scenes/cluttered_desk_01.json"
+# 或 headless：
+bash tools/start_robot129_grasp_sim.sh --scene pick_place --scene-manifest "$(pwd)/research/configs/scenes/cluttered_desk_01.json"
 ```
+（`start_robot129_grasp_sim.sh` 本來就用 `"$@"` 原樣轉傳，不用改；`start_robot129_ros_webrtc.sh` 這輪順便補上 `--scene-manifest` 轉傳，跟修 `--scene` 那個 bug 是同一個檔案。）
 
-### 5.3 這也是新開發，工作量誠實評估
+**驗證**：對 live Isaac 啟動，log 印出 `SCENE_MANIFEST spawned mug/cracker_box/distractor_block`；擷取一張腕上相機快照，畫面裡看得到跟純色方塊明顯不同的真實幾何（YCB mesh 的陰影／外形），不是我們自己畫的色塊；接著重跑一次 `tools/run_grasp_motion_demo.sh`（沒有 manifest 相關參數，跑的是原本的方塊抓取），確認雜物不會干擾核心抓取流程：`status=PASS, task_success=true`，跟沒有 manifest 時的數字一致。
 
-- **procedural 物體（方塊/長方體）改成讀 manifest**：中——現有程式碼已經是「每個物體一組尺寸/位置/顏色參數」，改成從 JSON 陣列讀取、迴圈 spawn，是重構不是重寫
-- **背景場景換成教室/雜亂實驗室的 USD 資產**：這是最大的未知數——**你需要先準備 USD 場景資產檔案**（自己建模、下載素材、或用 Isaac 內建 asset library），程式這邊只負責載入，不負責生成場景美術內容
-- **`usd_asset` 物體種類（比方塊複雜的雜物）**：中——需要處理碰撞體形狀不再是簡單方塊，`grasp_candidates.py` 目前的候選生成假設物體是軸對齊盒子附近的點雲，換成任意形狀的雜物可能需要調整篩選邏輯（詳見 `grasp_candidates.py` 的 `WIDTH_EXCEEDED`/`NON_ANTIPODAL_EDGE_CONTACT` 篩選假設）
-
-**我還沒寫任何一行程式碼**——這節純粹是規範提案，需要你確認方向（尤其是 USD 資產怎麼來）才能開始動工。
+**下一步（還沒做）**：
+- `target_cube` 本身納入 manifest（現在還是獨立寫死的抓取目標，manifest 只負責加雜物）
+- 桌子／教室背景 USD（`SeattleLabTable`、`Simple_Warehouse` 已查到路徑，還沒接——這個風險比雜物高，因為要確認桌面高度跟 `table_z_m=0.0` 對得上，貿然換背景可能讓抓取的參考平面跟著跑掉）
+- `usd_asset` 若要變成「可以抓的干擾物」（不只是雜物），需要碰撞體不再是軸對齊盒子，`grasp_candidates.py` 的篩選邏輯要跟著調整
 
 ---
 
