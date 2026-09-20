@@ -221,6 +221,8 @@ MTC 規劃節點已經有每個候選的 6D 夾爪姿態（`candidate_attempts[i
 
 第一次跑 `tools/run_grasp_demo_live.sh pick_place` 時，MTC 規劃 PASS，軌跡也 SUCCEEDED，但 `physical_grasp_success=false`、`task_success=false`——查下去發現 `/robot129_sim/objects/target_cube/pose` 這個 topic 根本不存在。追到根因：**`tools/start_robot129_ros_webrtc.sh` 這個腳本從來沒有接收／轉傳 `--scene` 參數**，不管你傳什麼給它都被忽略，永遠用 `run_robot129_ros_webrtc.py` 的預設值 `--scene marker`（沒有物理方塊、只有純視覺標記的那個最早期場景）。這個 bug 應該從 `pick_place` 場景被加進來那天就存在，只是沒人踩到——今天之前所有成功的物理取放（含這輪 B 類的三次驗證）全部是透過 `start_robot129_grasp_sim.sh`（headless 版本，args 是正確用 `"$@"` 轉傳的），沒有人用直播版本跑過完整的取放鏈路。已修正（讓腳本接受 `--scene`，預設值維持 `marker` 不變，不影響任何沒傳這個參數的既有呼叫），修正後重新測試：`status=PASS`，`task_success=true`，`lift_delta_m=0.0602`，`place_error_z_m≈1e-7`。
 
+**緊接著又抓到第二個真實 bug，也修好了**：確認 `--scene` 有效後，你問「相機影片呢？」，實測發現直播模式下錄影完全沒作用——`/robot129_sim/recording` service 回報「已開始」，但 `manifest.json` 永遠卡在 `status=RECORDING`、`frame_count=0`，沒有 `video.mp4`。追到根因：`sim/scripts/run_robot129_ros_webrtc.py` 裡負責錄影擷取畫面的 `overview_camera`（一個獨立的離屏相機）**只在 `args.record_only`（headless 模式）才會被建立**，而 `viewport`（直播用的互動視窗）剛好在 `not args.record_only` 時才建立——兩者互斥，代表「開直播」跟「錄影」這兩個功能設計上就沒辦法同時運作，錄影 service 開了個寂寞，捕不到任何一幀。已修正成無條件建立 `overview_camera`（改動只有拿掉 if 判斷，其餘程式碼都已經有 null check，不影響 headless 模式行為）。重啟 Isaac 重測：`run_0005` 錄到 95 幀、9.5 秒、640x480 h264 `video.mp4`，抽一幀出來看畫面正確——手臂正夾著紅色方塊。**現在直播看畫面 + 同時錄影可以同時運作了。**
+
 ---
 
 ## 5. 場景／物體切換規範（新場景、雜亂實驗室、換測試物品）

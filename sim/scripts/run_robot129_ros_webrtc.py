@@ -386,17 +386,27 @@ def main() -> int:
             ),
         )
     )
-    overview_camera = None
-    if args.record_only:
-        overview_camera = Camera(
-            CameraCfg(
-                prim_path="/World/RecordingCamera", update_period=0, height=480, width=640,
-                data_types=["rgb"], background_color=(0.055, 0.065, 0.080),
-                spawn=sim_utils.PinholeCameraCfg(
-                    focal_length=28, horizontal_aperture=20.955, clipping_range=(0.05, 5)
-                ),
-            )
+    # Was `if args.record_only:` -- an offscreen recording camera, independent of the
+    # interactive `viewport` set up below, is what the /robot129_sim/recording service
+    # (handle_recording -> the sim-loop capture block) actually reads frames from. Gating
+    # it on record_only made it mutually exclusive with --livestream (viewport is set
+    # exactly when NOT record_only), so no WebRTC session could ever produce a video: the
+    # recording service would report "started", capture zero frames, and never finalize
+    # a video.mp4 -- silently, since handle_recording's stop path only skips writing
+    # anything when frame_index==0 rather than reporting an error. Found 2026-09-20
+    # running tools/run_grasp_demo_live.sh with --record for the first time; every prior
+    # successful recording had been made via start_robot129_grasp_sim.sh (--record-only,
+    # headless, no viewport). Always creating this camera fixes both paths at once and
+    # costs one small offscreen render product even when nothing is being recorded.
+    overview_camera = Camera(
+        CameraCfg(
+            prim_path="/World/RecordingCamera", update_period=0, height=480, width=640,
+            data_types=["rgb"], background_color=(0.055, 0.065, 0.080),
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=28, horizontal_aperture=20.955, clipping_range=(0.05, 5)
+            ),
         )
+    )
 
     sim.reset()
     if overview_camera is not None:
