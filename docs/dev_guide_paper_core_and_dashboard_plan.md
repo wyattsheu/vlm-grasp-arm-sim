@@ -142,13 +142,20 @@ research/scripts/render_run_dashboard.py   # 新腳本，把上面兩個疊圖�
 
 拿 S4 真實跑（腕上相機真實擷取 + 真實本地 VLM）留下的 `research/data/scenes/s4_live_wrist_capture_01`（rgb/tf/camera_info）+ `out/grasp_motion/s4_live_test/affordance_region.json` + `s4_live_candidates.json` 跑過一次，兩張圖都正確：affordance 疊圖的框框準確落在方塊上；候選虛影圖裡 8 個候選繞著方塊中心呈放射狀排列，選中的 G000 是綠色實線，其餘依 accepted/rejected 分別是灰色/紅色虛線，下方文字條列出每個候選的完整 id/score/狀態。173 個既有測試（含新增的 12 個 viz 測試 + 2 個 project_point 測試）全數通過。
 
-### 3.3 怎麼接進實際的 run（下一步，還沒做）
+### 3.3 一鍵版本——已實作＋對真實 VLM 驗證
 
-現在這個腳本是「手動指定三個檔案路徑」，還沒接進 `tools/run_grasp_motion_demo.sh` 自動觸發。要自動化的話：
-1. `run_grasp_motion_demo.sh` 執行完之後，已經有 `plan.json`（含候選）、`report.json`（含執行結果）——加一步呼叫 `render_run_dashboard.py`，路徑從這兩個檔案裡讀。
-2. 目前 VLM 呼叫（`run_stage_a`/`run_grasp_affordance`）是研究腳本（`s4_live_affordance_smoke_test.py`）在跑，不在 `run_grasp_motion_demo.sh` 的路徑上——如果要「每次 run 都automatically 有 VLM 框框」，需要先決定 VLM 定位要不要變成正式執行流程的一部分（目前候選生成用的是 GT 幾何或人工指定的 mask，不是每次都跑 VLM）。
+`tools/run_grasp_dashboard.sh`：reset 場景 → 擷取腕上相機快照 → 真實 VLM 定位＋affordance＋候選生成 → 渲染兩張圖，一行指令：
 
-這步我還沒做，因為牽涉到「VLM 要不要變成正式流程的一部分」這個設計決定，想先確認你要哪種：每次執行都跑一次 VLM（會花真的 vLLM 推論時間），還是 VLM 疊圖只在你手動想看的時候才產生。
+```bash
+bash tools/run_grasp_dashboard.sh [scene_id] [instruction] [object_id]
+bash tools/run_grasp_dashboard.sh                    # 全部用預設值
+```
+
+自動處理 vLLM 生命週期：如果 8001 port 已經有 vLLM 在跑就直接借用、結束不關；如果沒有就自己啟動、結束自動關閉（用 `trap cleanup EXIT`，只有自己啟動的才會自己關——不然會誤關掉你原本就在用的）。選中的候選（畫綠色實線那個）自動抓 `rejection_reasons` 為空、分數最低（依專案慣例 lower is better）的第一個。
+
+**這個腳本存在的直接原因**：手動照三個步驟一步步下指令時，真的發生過「vLLM 才剛開始載入，下一步就把它關掉」的 race——因為手動下指令沒有等待/依賴關係保證。包成一支腳本、用同一個 shell 流程跑完，這個問題就不會再發生。
+
+**跟 `run_grasp_motion_demo.sh`（MTC 規劃執行）還是分開的兩支腳本**，故意沒有合併：這支腳本產生的候選只是拿去畫圖，不會真的餵給 MTC 規劃或執行；要看「VLM 定位的候選有沒有真的被機器人抓起來」，還是要另外把這支腳本的 `s4_live_candidates.json` 當 `--candidates-path` 傳給 `run_grasp_motion_demo.sh`（跟 S4 章節示範的手法一樣）。合併成單一鍵是可以做的下一步，如果你要每次都「VLM 定位 → 真的執行 → 錄影 → 疊圖」全部一次做完的話跟我說。
 
 ---
 

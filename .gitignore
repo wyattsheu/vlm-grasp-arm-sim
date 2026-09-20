@@ -27,6 +27,12 @@ vlm_cache/
 # this repo need pulled down by default
 research/data/scenes/*/depth.npy
 
+# Ad-hoc captures from tools/run_grasp_dashboard.sh / manual testing -- every
+# run makes a new timestamped one of these; not curated fixtures like
+# s4_live_wrist_capture_01/ and s4_hammer_test/, which stay tracked
+research/data/scenes/dashboard_*/
+research/data/scenes/live_dashboard_demo_*/
+
 # Python
 __pycache__/
 *.pyc
