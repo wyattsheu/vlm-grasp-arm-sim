@@ -42,8 +42,48 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "research" / "src"))
 
-from mpg.schema import AffordanceRegion, PointStatus  # noqa: E402
-from mpg.viz import render_affordance_overlay, render_candidate_ghosts  # noqa: E402
+from mpg.schema import (  # noqa: E402
+    AffordanceRegion,
+    LocatedStep,
+    PlanStepSpec,
+    PointStatus,
+    ReferenceKind,
+    StepType,
+)
+from mpg.viz import (  # noqa: E402
+    render_affordance_overlay,
+    render_candidate_ghosts,
+    render_plan_overlay,
+)
+
+
+class _StepsOnly:
+    """render_plan_overlay() only ever reads plan.steps -- this stands in for
+    a full mpg.schema.Plan (which also wants a StageAPlan, a Meta, etc. that
+    nothing here has any use for) so a bare located_steps.json can be
+    rendered without reconstructing fields the renderer never looks at."""
+
+    def __init__(self, steps: tuple[LocatedStep, ...]):
+        self.steps = steps
+
+
+def _load_located_steps(path: Path) -> tuple[LocatedStep, ...]:
+    raw = json.loads(path.read_text())
+    steps = []
+    for d in raw:
+        spec = PlanStepSpec(
+            step_id=d["step_id"], type=StepType(d["type"]), desc=d["desc"],
+            reference_kind=ReferenceKind(d["reference_kind"]),
+            geometric_meaning=d["geometric_meaning"],
+        )
+        point = d.get("point_yx_norm1000")
+        steps.append(LocatedStep(
+            spec=spec,
+            point_yx_norm1000=tuple(point) if point else None,
+            point_status=PointStatus(d["point_status"]),
+            reason_codes=d.get("reason_codes", []),
+        ))
+    return tuple(steps)
 
 
 def _load_affordance_region(path: Path) -> AffordanceRegion:
@@ -64,6 +104,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--scene-bundle", required=True, type=Path, help="dir with rgb.png, tf.json, camera_info.json")
     p.add_argument("--affordance-json", type=Path, default=None)
+    p.add_argument("--located-steps-json", type=Path, default=None, help="stage_a/b output, from s4_live_affordance_smoke_test.py's located_steps.json")
     p.add_argument("--candidates-json", type=Path, default=None, help="grasp_contract-format candidates JSON")
     p.add_argument("--chosen-id", default=None)
     p.add_argument("--instruction", default=None, help="overrides scene-bundle/instruction.txt if given")
@@ -110,6 +151,25 @@ def main() -> int:
             "description": region.description,
         }
         print(f"wrote {overlay_path}")
+
+    # --- stage_a/b semantic points (GRASP/WAYPOINT/RELEASE, colored + labeled) -----
+    # This is the "point out target/tool/object" visualization -- the paper's own
+    # convention (ZeroDex Fig. S1 style: one colored, labeled dot per primitive step),
+    # not the affordance bbox above. For a plain pick-and-place task with a
+    # parallel-jaw gripper there is no tool-use step, so this naturally only ever
+    # shows GRASP/WAYPOINT/RELEASE -- APPLY_ACTION/FUNCTIONAL_TIP only appear for a
+    # tool-use instruction (viz.STEP_COLORS still defines colors for those in case a
+    # future run's instruction does trigger tool-use mode).
+    if args.located_steps_json is not None:
+        located_steps = _load_located_steps(args.located_steps_json)
+        points_img = render_plan_overlay(rgb, _StepsOnly(located_steps))
+        points_path = args.out_dir / "semantic_points.png"
+        points_img.save(points_path)
+        summary["semantic_points"] = {
+            "path": str(points_path),
+            "steps": [{"type": s.spec.type.value, "status": s.point_status.value} for s in located_steps],
+        }
+        print(f"wrote {points_path}")
 
     # --- candidate ghosts ----------------------------------------------------
     if args.candidates_json is not None:

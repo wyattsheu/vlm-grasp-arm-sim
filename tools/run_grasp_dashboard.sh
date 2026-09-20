@@ -95,10 +95,12 @@ dashboard_dir="$root/out/grasp_motion/dashboard/$scene_id"
 "$research_python" "$root/research/scripts/render_run_dashboard.py" \
   --scene-bundle "$root/research/data/scenes/$scene_id" \
   --affordance-json "$vllm_dir/affordance_region.json" \
+  --located-steps-json "$vllm_dir/located_steps.json" \
   --candidates-json "$vllm_dir/s4_live_candidates.json" \
   --chosen-id "$chosen_id" \
   --object-id "$object_id" \
   --out-dir "$dashboard_dir"
 
 echo "done: $dashboard_dir/vlm_overlay.png"
+echo "      $dashboard_dir/semantic_points.png"
 echo "      $dashboard_dir/candidates_ghost.png"

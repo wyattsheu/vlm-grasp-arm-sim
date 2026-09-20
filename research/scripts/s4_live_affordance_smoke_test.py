@@ -87,6 +87,9 @@ def run(BUNDLE: Path, OUT: Path) -> int:
         for step in located_steps:
             print(f"  stage_b {step.spec.step_id} {step.spec.type.value}: "
                   f"{step.point_yx_norm1000} status={step.point_status.value}")
+        (OUT / "located_steps.json").write_text(
+            json.dumps([s.to_json() for s in located_steps], indent=2)
+        )
     except GroundingFailure as e:
         print(f"GroundingFailure: stage={e.stage} n_calls={e.n_calls}")
         print("raw_responses:", e.raw_responses)
