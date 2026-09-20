@@ -12,8 +12,13 @@
 # or tools/start_robot129_ros_webrtc.sh --scene pick_place first).
 #
 # Usage:
-#   tools/run_grasp_session.sh [scene_id] [instruction] [object_id]
-#   tools/run_grasp_session.sh                                    # all defaults
+#   tools/run_grasp_session.sh [scene_id] [instruction] [object_id] [--backend qwen|gemini]
+#   tools/run_grasp_session.sh                                    # all defaults, qwen (free)
+#
+# --backend gemini: real per-call cost. Reads GEMINI_API_KEY from the environment
+#   only (AGENTS.md rule 13) -- export it yourself first, this script never accepts
+#   it as an argument. See tools/run_grasp_dashboard.sh's header for why you'd want
+#   this (free local Qwen3-VL-8B hallucinating scene layout once clutter is added).
 set -euo pipefail
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 isaac=/mnt/HDD4/wyattsheu/IsaacLab
@@ -22,9 +27,22 @@ ros_env=/mnt/HDD4/wyattsheu/env_robot129_ros
 micro=/mnt/HDD4/wyattsheu/tools/micromamba/micromamba
 research_python=/mnt/HDD4/wyattsheu/env_robot129_research/bin/python
 
-scene_id="${1:-session_$(date -u +%Y%m%dT%H%M%SZ)}"
-instruction="${2:-pick up the red cube and place it on the green pad}"
-object_id="${3:-red_cube}"
+backend="qwen"
+positional=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backend) backend="$2"; shift 2 ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+scene_id="${positional[0]:-session_$(date -u +%Y%m%dT%H%M%SZ)}"
+instruction="${positional[1]:-pick up the red cube and place it on the green pad}"
+object_id="${positional[2]:-red_cube}"
+
+if [[ "$backend" == "gemini" && -z "${GEMINI_API_KEY:-}" ]]; then
+  echo "FAIL: --backend gemini requires GEMINI_API_KEY set in the environment (not passed as an argument, not guessed)." >&2
+  exit 2
+fi
 
 session_dir="$root/out/grasp_motion/sessions_full/$scene_id"
 mkdir -p "$session_dir"
@@ -40,7 +58,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! curl -sf --max-time 2 http://127.0.0.1:8001/v1/models > /dev/null 2>&1; then
+if [[ "$backend" == "gemini" ]]; then
+  echo "[1/5] backend=gemini, no local vLLM needed"
+elif ! curl -sf --max-time 2 http://127.0.0.1:8001/v1/models > /dev/null 2>&1; then
   echo "[1/5] starting local vLLM (not already running)"
   bash "$root/tools/start_robot129_vllm.sh"
   vllm_started_by_us=1
@@ -73,8 +93,8 @@ export LD_LIBRARY_PATH="$rosroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   --joint-topic /robot129_sim/joint_states \
   --best-effort
 
-echo "[3/5] real VLM grounding + affordance + candidate generation"
-"$research_python" "$root/research/scripts/s4_live_affordance_smoke_test.py" "$scene_id" "$session_dir"
+echo "[3/5] real VLM grounding + affordance + candidate generation (backend=$backend)"
+"$research_python" "$root/research/scripts/s4_live_affordance_smoke_test.py" "$scene_id" "$session_dir" --backend "$backend"
 candidates_path="$session_dir/s4_live_candidates.json"
 if [[ ! -f "$candidates_path" ]]; then
   echo "FAIL: no candidates produced by the VLM step (see output above -- likely GroundingFailure or NoGraspStepError)" >&2

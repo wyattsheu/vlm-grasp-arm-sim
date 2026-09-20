@@ -14,7 +14,18 @@ script for anything other than the S2 red cube.
 
 Usage:
   /mnt/HDD4/wyattsheu/env_robot129_research/bin/python \\
-      research/scripts/s4_live_affordance_smoke_test.py [scene_id] [output_dir]
+      research/scripts/s4_live_affordance_smoke_test.py [scene_id] [output_dir] [--backend qwen|gemini]
+
+--backend qwen (default): local, free, requires tools/start_robot129_vllm.sh running.
+--backend gemini: real Gemini API call, real per-call cost (AGENTS.md rule 13 --
+    reads GEMINI_API_KEY from the environment only; refuses to run rather than
+    guess or hardcode a key if it's unset). Found 2026-09-20: Qwen3-VL-8B
+    hallucinates scene layout once a few extra objects are in frame (calls a
+    clearly-centered, unoccluded object "near the bottom edge, partially
+    occluded"), which cascades into stage_a reporting visibility=partial and
+    every downstream step abstaining honestly on a target that was actually
+    fine. gemini-robotics-er-2-preview -- what ZeroDex itself uses, not a
+    substitute -- got the same real scene right on the first try.
 """
 import json
 import sys
@@ -37,20 +48,25 @@ from mpg.grounding import (
 from mpg.affordance_region import object_points_and_task_region_mask, AffordanceRegionError
 from mpg.grasp_candidates import generate_grasp_candidates
 from mpg.grasp_contract import write_candidates_json
+from mpg.vlm.gemini import GeminiBackend
 from mpg.vlm.local import LocalQwenBackend
 
 INSTRUCTION = "pick up the red cube and place it on the green pad"
 
 
 def main() -> int:
-    scene_id = sys.argv[1] if len(sys.argv) > 1 else "s4_live_wrist_capture_01"
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    backend_name = "qwen"
+    if "--backend" in sys.argv:
+        backend_name = sys.argv[sys.argv.index("--backend") + 1]
+    scene_id = positional[0] if len(positional) > 0 else "s4_live_wrist_capture_01"
     bundle = ROOT / "research" / "data" / "scenes" / scene_id
-    out = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "out" / "grasp_motion" / "s4_live_test"
+    out = Path(positional[1]) if len(positional) > 1 else ROOT / "out" / "grasp_motion" / "s4_live_test"
     out.mkdir(parents=True, exist_ok=True)
-    return run(bundle, out)
+    return run(bundle, out, backend_name=backend_name)
 
 
-def run(BUNDLE: Path, OUT: Path) -> int:
+def run(BUNDLE: Path, OUT: Path, backend_name: str = "qwen") -> int:
     rgb = np.array(Image.open(BUNDLE / "rgb.png").convert("RGB"))
     depth = np.load(BUNDLE / "depth.npy")
     camera_info = json.loads((BUNDLE / "camera_info.json").read_text())
@@ -61,13 +77,23 @@ def run(BUNDLE: Path, OUT: Path) -> int:
 
     print(f"rgb shape={rgb.shape} depth shape={depth.shape} depth range=[{np.nanmin(depth):.3f},{np.nanmax(depth):.3f}]m")
 
-    backend = LocalQwenBackend(
-        cache_dir=OUT / "vlm_cache",
-        log_path=OUT / "vlm_log.jsonl",
-        model="qwen-vl",
-        url="http://127.0.0.1:8001/v1/chat/completions",
-        phase_id="s4-live-test",
-    )
+    if backend_name == "gemini":
+        backend = GeminiBackend(
+            cache_dir=OUT / "vlm_cache",
+            log_path=OUT / "vlm_log.jsonl",
+            phase_id="s4-live-test",
+        )
+    elif backend_name == "qwen":
+        backend = LocalQwenBackend(
+            cache_dir=OUT / "vlm_cache",
+            log_path=OUT / "vlm_log.jsonl",
+            model="qwen-vl",
+            url="http://127.0.0.1:8001/v1/chat/completions",
+            phase_id="s4-live-test",
+        )
+    else:
+        print(f"FAIL: unknown --backend {backend_name!r} (expected qwen or gemini)")
+        return 2
     image = Image.fromarray(rgb)
 
     # --- Step 0: stage_a/stage_b semantic localization, THEN derive the affordance

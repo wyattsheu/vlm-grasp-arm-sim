@@ -13,9 +13,17 @@
 # killing it with SIGTERM 10s into loading (found 2026-09-20).
 #
 # Usage:
-#   tools/run_grasp_dashboard.sh [scene_id] [instruction] [object_id]
-#   tools/run_grasp_dashboard.sh                                    # all defaults
-#   tools/run_grasp_dashboard.sh my_run_01 "pick up the red cube and place it on the green pad" red_cube
+#   tools/run_grasp_dashboard.sh [scene_id] [instruction] [object_id] [--backend qwen|gemini]
+#   tools/run_grasp_dashboard.sh                                    # all defaults, qwen (free)
+#   tools/run_grasp_dashboard.sh my_run_01 "pick up the red cube and place it on the green pad" red_cube --backend gemini
+#
+# --backend gemini: real per-call cost. Reads GEMINI_API_KEY from the environment
+#   only (AGENTS.md rule 13) -- export it yourself before running this, this script
+#   never asks for or accepts it as an argument. Found 2026-09-20: worth it when the
+#   scene has enough clutter that the free local Qwen3-VL-8B starts hallucinating
+#   scene layout (see docs/dev_guide_paper_core_and_dashboard_plan.md §3 for the
+#   concrete before/after). No local vLLM server needed for this backend -- steps
+#   that start/stop it are skipped entirely.
 set -euo pipefail
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 isaac=/mnt/HDD4/wyattsheu/IsaacLab
@@ -24,9 +32,22 @@ ros_env=/mnt/HDD4/wyattsheu/env_robot129_ros
 micro=/mnt/HDD4/wyattsheu/tools/micromamba/micromamba
 research_python=/mnt/HDD4/wyattsheu/env_robot129_research/bin/python
 
-scene_id="${1:-dashboard_$(date -u +%Y%m%dT%H%M%SZ)}"
-instruction="${2:-pick up the red cube and place it on the green pad}"
-object_id="${3:-red_cube}"
+backend="qwen"
+positional=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backend) backend="$2"; shift 2 ;;
+    *) positional+=("$1"); shift ;;
+  esac
+done
+scene_id="${positional[0]:-dashboard_$(date -u +%Y%m%dT%H%M%SZ)}"
+instruction="${positional[1]:-pick up the red cube and place it on the green pad}"
+object_id="${positional[2]:-red_cube}"
+
+if [[ "$backend" == "gemini" && -z "${GEMINI_API_KEY:-}" ]]; then
+  echo "FAIL: --backend gemini requires GEMINI_API_KEY set in the environment (not passed as an argument, not guessed)." >&2
+  exit 2
+fi
 
 vllm_dir="$root/out/grasp_motion/dashboard_runs/$scene_id"
 mkdir -p "$vllm_dir"
@@ -42,7 +63,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! curl -sf --max-time 2 http://127.0.0.1:8001/v1/models > /dev/null 2>&1; then
+if [[ "$backend" == "gemini" ]]; then
+  echo "[0/4] backend=gemini, no local vLLM needed"
+elif ! curl -sf --max-time 2 http://127.0.0.1:8001/v1/models > /dev/null 2>&1; then
   echo "[0/4] starting local vLLM (not already running)"
   bash "$root/tools/start_robot129_vllm.sh"
   vllm_started_by_us=1
@@ -76,8 +99,8 @@ export LD_LIBRARY_PATH="$rosroot/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
   --joint-topic /robot129_sim/joint_states \
   --best-effort
 
-echo "[3/4] real VLM grounding + affordance + candidate generation"
-"$research_python" "$root/research/scripts/s4_live_affordance_smoke_test.py" "$scene_id" "$vllm_dir"
+echo "[3/4] real VLM grounding + affordance + candidate generation (backend=$backend)"
+"$research_python" "$root/research/scripts/s4_live_affordance_smoke_test.py" "$scene_id" "$vllm_dir" --backend "$backend"
 
 chosen_id="$(python3 -c "
 import json
