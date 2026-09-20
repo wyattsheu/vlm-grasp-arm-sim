@@ -78,10 +78,16 @@ def run(BUNDLE: Path, OUT: Path, backend_name: str = "qwen") -> int:
     print(f"rgb shape={rgb.shape} depth shape={depth.shape} depth range=[{np.nanmin(depth):.3f},{np.nanmax(depth):.3f}]m")
 
     if backend_name == "gemini":
+        # max_tokens default (1024, gemini.py) was found 2026-09-21 to sometimes
+        # truncate stage_a's response ("Gemini response truncated at token limit")
+        # once the scene has enough clutter objects to describe -- not every call,
+        # just the more verbose ones. 4096 gives real headroom without materially
+        # changing per-call cost (billing is on tokens actually used, not the cap).
         backend = GeminiBackend(
             cache_dir=OUT / "vlm_cache",
             log_path=OUT / "vlm_log.jsonl",
             phase_id="s4-live-test",
+            max_tokens=4096,
         )
     elif backend_name == "qwen":
         backend = LocalQwenBackend(

@@ -923,7 +923,7 @@ def main() -> int:
     ] if sessions_dir.is_dir() else []
     recording_state = {
         "active": False, "run_id": max(existing_run_ids, default=-1), "frame_index": 0,
-        "dir": None, "last_saved": 0.0,
+        "wrist_frame_index": 0, "dir": None, "last_saved": 0.0, "wrist_last_saved": 0.0,
     }
     frame_state = {"sim_time": 0.0, "count": 0}
 
@@ -988,10 +988,19 @@ def main() -> int:
         recording_state["run_id"] += 1
         run_dir = root / "out/grasp_motion/sessions" / f"run_{recording_state['run_id']:04d}"
         (run_dir / "frames").mkdir(parents=True, exist_ok=True)
+        # Third-person (fixed overview_camera) into frames/ -> video.mp4, as before.
+        # Also record first-person -- the actual wrist_camera the VLM judges the scene
+        # from -- into wrist_frames/ -> wrist_video.mp4, so a run's video answers "what
+        # did the gripper's own camera see, and what did it do about it" instead of only
+        # "what did an external observer see." Added 2026-09-21 on request: until now
+        # only the third-person view was ever recorded.
+        (run_dir / "wrist_frames").mkdir(parents=True, exist_ok=True)
         recording_state["dir"] = run_dir
         recording_state["frame_index"] = 0
+        recording_state["wrist_frame_index"] = 0
         recording_state["active"] = True
         recording_state["last_saved"] = -1.0
+        recording_state["wrist_last_saved"] = -1.0
         (run_dir / "manifest.json").write_text(json.dumps({
             "run_id": recording_state["run_id"],
             "started_sim_time_s": frame_state["sim_time"],
@@ -1023,8 +1032,25 @@ def main() -> int:
                 ],
                 stdout=log_file, stderr=subprocess.STDOUT,
             )
+        wrist_video_path = run_dir / "wrist_video.mp4"
+        wrist_log_path = run_dir / "wrist_ffmpeg.log"
+        wrist_frame_count = recording_state.get("wrist_frame_index", 0)
+        if wrist_frame_count > 0:
+            with wrist_log_path.open("wb") as log_file:
+                subprocess.Popen(
+                    [
+                        "ffmpeg", "-y", "-framerate", str(args.record_fps),
+                        "-i", str(run_dir / "wrist_frames" / "frame_%06d.png"),
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                        str(wrist_video_path),
+                    ],
+                    stdout=log_file, stderr=subprocess.STDOUT,
+                )
+        manifest["wrist_frame_count"] = wrist_frame_count
+        manifest_path.write_text(json.dumps(manifest, indent=2))
         print(f"[ROBOT129 ROS WEBRTC] RECORDING_STOP run_id={recording_state['run_id']} "
-              f"frames={recording_state['frame_index']} -> {video_path}", flush=True)
+              f"frames={recording_state['frame_index']} -> {video_path} "
+              f"wrist_frames={wrist_frame_count} -> {wrist_video_path}", flush=True)
 
     def handle_recording(request, response):
         if request.data and not recording_state["active"]:
@@ -1124,6 +1150,24 @@ def main() -> int:
                     recording_state["frame_index"] += 1
                 except Exception as exc:
                     print(f"[ROBOT129 ROS WEBRTC] RECORD_FRAME_ERROR {type(exc).__name__}: {exc}", flush=True)
+
+        if recording_state["active"] and wrist_camera is not None:
+            # Same recording toggle, same run_dir, a second stream: the gripper's own
+            # first-person view (wrist_camera), captured into wrist_frames/. Shares
+            # record_fps with the third-person stream so the two videos stay comparable
+            # frame-for-frame even though they're written by two independent throttles.
+            period = 1.0 / max(args.record_fps, 0.1)
+            if sim_time - recording_state["wrist_last_saved"] >= period:
+                recording_state["wrist_last_saved"] = sim_time
+                try:
+                    from PIL import Image as PILImage
+
+                    wrist_rgb = wrist_camera.data.output["rgb"].torch[0, ..., :3].detach().cpu().numpy().astype(np.uint8)
+                    wrist_frame_path = recording_state["dir"] / "wrist_frames" / f"frame_{recording_state['wrist_frame_index']:06d}.png"
+                    PILImage.fromarray(wrist_rgb).save(wrist_frame_path)
+                    recording_state["wrist_frame_index"] += 1
+                except Exception as exc:
+                    print(f"[ROBOT129 ROS WEBRTC] WRIST_RECORD_FRAME_ERROR {type(exc).__name__}: {exc}", flush=True)
 
         time.sleep(1 / 120)
 

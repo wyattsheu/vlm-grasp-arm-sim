@@ -171,6 +171,14 @@ video_path="$(ls -t "$root"/out/grasp_motion/sessions/run_*/video.mp4 2>/dev/nul
   --object-id "$object_id" \
   ${video_path:+--video "$video_path"} \
   --out-dir "$session_dir"
+# render_run_dashboard.py's --video only takes one file (-> camera.mp4, third-person).
+# The first-person wrist_video.mp4 (2026-09-21: same recording toggle now captures both,
+# see sim/scripts/run_robot129_ros_webrtc.py's start_recording()) is copied here directly.
+wrist_video_path="$(ls -t "$root"/out/grasp_motion/sessions/run_*/wrist_video.mp4 2>/dev/null | head -1 || true)"
+if [[ -n "$wrist_video_path" ]]; then
+  cp "$wrist_video_path" "$session_dir/wrist_camera.mp4"
+  echo "copied $wrist_video_path -> $session_dir/wrist_camera.mp4"
+fi
 
 echo
 echo "=== session folder: $session_dir ==="
