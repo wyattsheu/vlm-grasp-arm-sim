@@ -252,9 +252,13 @@ def render_candidate_ghosts(
     chosen_id: str | None = None,
     caption_lines: tuple[str, ...] = (),
 ) -> Image.Image:
-    """Draw every grasp candidate's jaw span as a semi-transparent 'ghost'
-    line on a copy of the image, projected from its world-frame pose back
-    into the camera it was captured from -- a static-image stand-in for the
+    """Draw every grasp candidate as a semi-transparent gripper-shaped
+    'ghost' (two finger blocks spanning the jaw opening, filled and
+    translucent, not just a line), projected from its world-frame pose back
+    into the camera it was captured from. Many overlapping ghosts are meant
+    to read the way ZeroDex's own "Atomic-Action Alignment" figure does --
+    a fan of translucent gripper/hand poses converging on the target -- not
+    as an abstract vector diagram. This is a static-image stand-in for the
     RViz MarkerArray candidate visualization (see docs/progress's
     "候選決策視覺化" section), which only ever exists live in RViz on a
     machine with no display to screenshot it from.
@@ -266,41 +270,54 @@ def render_candidate_ghosts(
     inverse of the captured T_world_camera (world point -> camera-optical
     frame point), i.e. np.linalg.inv(tf["matrix"]).
 
-    Chosen candidate: solid green. Any other accepted candidate: dashed
-    grey (still legal, just not the one taken). Rejected candidate: dashed
-    red. A candidate whose jaw-span points project behind the camera
-    (z <= 0) is skipped, not silently drawn wrong."""
+    Chosen candidate: solid green, drawn last and fully opaque so it stands
+    out from the pile. Every other accepted candidate: translucent grey.
+    Rejected candidate: translucent red. A candidate whose points project
+    behind the camera (z <= 0) is skipped, not silently drawn wrong."""
     import numpy as np
 
     from .lifting import apply_transform, project_point
 
-    vis = image.convert("RGB").copy()
-    draw = ImageDraw.Draw(vis)
-    width, height = vis.size
+    base = image.convert("RGBA")
+    width, height = base.size
     _, font_size, font = _scale_for(width, height)
 
-    def _dashed_line(p0, p1, color, width_px):
-        p0 = np.array(p0, dtype=float)
-        p1 = np.array(p1, dtype=float)
-        length = float(np.linalg.norm(p1 - p0))
-        if length < 1e-6:
-            return
-        n_dashes = max(1, int(length // 6))
-        for i in range(n_dashes):
-            if i % 2 == 1:
-                continue
-            a = p0 + (p1 - p0) * (i / n_dashes)
-            b = p0 + (p1 - p0) * (min(i + 1, n_dashes) / n_dashes)
-            draw.line((tuple(a), tuple(b)), fill=color, width=width_px)
+    # Real jaw spans/finger widths are often only ~1-2cm on a small object
+    # seen top-down, projecting to a handful of pixels -- unreadable, and
+    # every candidate's ghost piles onto the same few pixels since they
+    # share a center. Each ghost's finger span is stretched (about its true
+    # center, keeping its true on-screen orientation) to at least this many
+    # pixels so the shapes stay legible; this is a visual exaggeration of
+    # scale, not of position or angle, and is named as such in the caption
+    # so it never reads as a real-size measurement.
+    min_half_len_px = max(22.0, font_size * 1.3)
+    finger_half_thickness_px = max(5.0, font_size * 0.35)
 
-    # Real jaw spans are often only ~1-2cm on a small object seen top-down,
-    # which projects to a few pixels -- unreadable, and every candidate's
-    # ghost piles up on the same few pixels since they share a center. Each
-    # ghost is stretched (about its true center, keeping its true on-screen
-    # orientation) to at least this many pixels so it stays legible; this is
-    # a visual exaggeration of scale, not of position or angle, and is named
-    # as such in the caption so it never reads as a real-size measurement.
-    min_half_len_px = max(18.0, font_size * 1.1)
+    def _draw_gripper_ghost(layer_draw, pa, pb, color, alpha, thick_px):
+        """One candidate's ghost: two finger blocks (perpendicular to the
+        closing axis, at each jaw-contact point) plus a thin bridge between
+        them, all filled -- reads as 'a gripper about to close here', not a
+        vector arrow."""
+        pa = np.array(pa, dtype=float)
+        pb = np.array(pb, dtype=float)
+        closing_dir = pb - pa
+        length = float(np.linalg.norm(closing_dir))
+        closing_dir = closing_dir / length if length > 1e-6 else np.array([1.0, 0.0])
+        across_dir = np.array([-closing_dir[1], closing_dir[0]])  # perpendicular, in-plane
+        finger_half_len = max(min_half_len_px * 0.55, thick_px * 2)
+        fill = (*color, alpha)
+        for tip in (pa, pb):
+            poly = [
+                tuple(tip + across_dir * finger_half_len),
+                tuple(tip - across_dir * finger_half_len),
+            ]
+            layer_draw.line(poly, fill=fill, width=int(finger_half_thickness_px * 2))
+            layer_draw.ellipse(
+                (tip[0] - finger_half_thickness_px, tip[1] - finger_half_thickness_px,
+                 tip[0] + finger_half_thickness_px, tip[1] + finger_half_thickness_px),
+                fill=fill,
+            )
+        layer_draw.line((tuple(pa), tuple(pb)), fill=fill, width=max(2, int(thick_px * 0.4)))
 
     items = []
     for cand in candidates:
@@ -331,45 +348,45 @@ def render_candidate_ghosts(
         accepted = bool(cand.get("accepted", not cand.get("rejection_reasons")))
         is_chosen = chosen_id is not None and cid == chosen_id
         if is_chosen:
-            color, width_px, solid = (30, 200, 60), max(3, font_size // 6), True
+            color, alpha, thick_px = (30, 200, 60), 255, max(4, font_size // 5)
         elif accepted:
-            color, width_px, solid = (150, 150, 150), max(2, font_size // 8), False
+            color, alpha, thick_px = (170, 170, 175), 70, max(3, font_size // 7)
         else:
-            color, width_px, solid = (220, 40, 40), max(2, font_size // 8), False
+            color, alpha, thick_px = (220, 40, 40), 70, max(3, font_size // 7)
 
         score = cand.get("score")
-        items.append((is_chosen, cid, tuple(pa), tuple(pb), tuple(mid), color, width_px, solid, score, accepted))
+        items.append((is_chosen, cid, tuple(pa), tuple(pb), color, alpha, thick_px, score, accepted))
 
-    # Chosen candidate drawn last so it sits on top of the pile, not buried
-    # under whichever unrelated candidate happened to come later in the list.
+    # Chosen candidate drawn last so it's fully opaque on top of the
+    # translucent pile, not blended into it.
     items.sort(key=lambda it: it[0])
-    # Full id/score/status text goes in the caption strip below, not on the
-    # image: for a small top-down object every candidate's ghost lands on
-    # nearly the same few pixels, and text labels there just pile into an
-    # unreadable stack. Each ghost gets only a 1-2 digit index tag on the
-    # image; the caption spells out what each index is.
     detail_lines = []
-    for i, (is_chosen, cid, pa, pb, mid, color, width_px, solid, score, accepted) in enumerate(items):
-        if solid:
-            draw.line((pa, pb), fill=color, width=width_px)
-        else:
-            _dashed_line(pa, pb, color, width_px)
-        draw.ellipse((mid[0] - 2, mid[1] - 2, mid[0] + 2, mid[1] + 2), fill=color)
-        # Tag sits just past one jaw tip, offset around the shared center by
-        # index so tags for candidates piled on the same pixel don't overlap.
-        angle = (i / max(1, len(items))) * 2 * math.pi
-        tx = mid[0] + math.cos(angle) * (min_half_len_px + 6)
-        ty = mid[1] + math.sin(angle) * (min_half_len_px + 6) - font_size / 2
-        draw.text(
-            (tx, ty), str(i), fill=color, font=font,
-            stroke_width=max(1, font_size // 10), stroke_fill=(255, 255, 255),
-        )
+    for i, (is_chosen, cid, pa, pb, color, alpha, thick_px, score, accepted) in enumerate(items):
+        layer = Image.new("RGBA", base.size, (0, 0, 0, 0))
+        layer_draw = ImageDraw.Draw(layer)
+        _draw_gripper_ghost(layer_draw, pa, pb, color, alpha, thick_px)
+        base = Image.alpha_composite(base, layer)
         tag = "CHOSEN" if is_chosen else ("accepted" if accepted else "rejected")
         score_txt = f"{score:.3f}" if isinstance(score, (int, float)) else "?"
         detail_lines.append(f"[{i}] {cid} score={score_txt} {tag}")
 
+    vis = base.convert("RGB")
+    draw = ImageDraw.Draw(vis)
+    # Index tags after compositing, on the flattened image, so text stays
+    # crisp (not alpha-blended) regardless of how many ghosts are underneath.
+    for i, (is_chosen, cid, pa, pb, color, alpha, thick_px, score, accepted) in enumerate(items):
+        mid = ((pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2)
+        angle = (i / max(1, len(items))) * 2 * math.pi
+        tx = mid[0] + math.cos(angle) * (min_half_len_px + 10)
+        ty = mid[1] + math.sin(angle) * (min_half_len_px + 10) - font_size / 2
+        label_color = color if is_chosen else (90, 90, 90) if accepted else (150, 20, 20)
+        draw.text(
+            (tx, ty), str(i), fill=label_color, font=font,
+            stroke_width=max(1, font_size // 10), stroke_fill=(255, 255, 255),
+        )
+
     lines = list(caption_lines)
-    lines.append(f"{len(items)}/{len(candidates)} candidates projected onto camera view (jaw span exaggerated for legibility, not to true scale)")
+    lines.append(f"{len(items)}/{len(candidates)} candidates projected onto camera view (gripper size exaggerated for legibility, not to true scale)")
     lines.extend(detail_lines)
     line_h = round(font_size * 1.5)
     strip = Image.new("RGB", (width, line_h * len(lines) + font_size // 2), color=(255, 255, 255))

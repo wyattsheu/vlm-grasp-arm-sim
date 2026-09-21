@@ -228,8 +228,14 @@ class RenderCandidateGhostsTest(unittest.TestCase):
         self.assertGreater(out.height, image.height)  # detail-line caption strip appended
         top = out.crop((0, 0, image.width, image.height))
         colors = set(top.getdata())
-        self.assertIn((30, 200, 60), colors)   # chosen -> solid green
-        self.assertIn((220, 40, 40), colors)   # rejected -> dashed red
+        self.assertIn((30, 200, 60), colors)   # chosen -> solid, fully opaque green
+        # Rejected is drawn translucent now (ghost overlay), so it won't be the exact
+        # opaque (220,40,40) -- check for a reddish pixel (blended toward the red
+        # ghost, distinctly redder than the grey background) instead of an exact hit.
+        self.assertTrue(
+            any(r > 150 and r - g > 20 and r - b > 20 for (r, g, b) in colors),
+            f"expected a reddish (rejected-ghost) pixel among {colors}",
+        )
 
     def test_candidate_behind_camera_is_skipped_not_misdrawn(self) -> None:
         image = Image.new("RGB", (50, 50), color=(0, 0, 0))
