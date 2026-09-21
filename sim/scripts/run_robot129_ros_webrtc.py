@@ -63,6 +63,16 @@ parser.add_argument(
          "research/src/mpg/grasp_candidates.py and the MTC collision setup.",
 )
 parser.add_argument(
+    "--wrist-camera-pitch-deg", type=float, default=0.0,
+    help="Opt-in correction for the wrist camera's mount angle (see the "
+         "WRIST_CAMERA_PITCH_CORRECTION_DEG comment below for the full empirical "
+         "calibration story). 0.0 (default) keeps the straight-down view every VLM/"
+         "grasp result this session was validated against. Negative values tilt toward "
+         "world -X (brings the place-pad into frame at an oblique angle closer to real "
+         "Robot 129 photos, but also starts showing the arm's own hardware at the bottom "
+         "of frame and moves the cube off-center) -- try -25 for a first look.",
+)
+parser.add_argument(
     "--record-only", action="store_true",
     help="Skip the interactive viewport / WebRTC probe path; use an offscreen recording "
          "camera instead. Launch without --livestream when using this flag.",
@@ -114,6 +124,34 @@ WRIST_OPTICAL_PARENT = (
 )
 WRIST_CAMERA_PRIM = WRIST_OPTICAL_PARENT + "/sensor"
 WRIST_FRAME = "camera_color_optical_frame"
+# ros2_ws/src/robot129_description/config/nominal_frames.yaml's camera_mount_rpy_rad
+# (baked into the imported USD this prim chain lives in) is [0,0,0] -- the sim camera
+# was, until this constant existed, aligned exactly with the gripper's own reach axis
+# (gripper_to_tcp is along local +Z), i.e. looking straight down the approach direction
+# at HOME. Real Robot 129 photos supplied by the user 2026-09-21 show the physical
+# camera mounted at a real angle off that axis, not coaxial with it -- that file already
+# carries an explicit SIMULATION_NOMINAL_UNVERIFIED_ON_HARDWARE warning for exactly this.
+# Re-importing the URDF (tools/import_robot129_usd.sh) to fix camera_mount_rpy_rad
+# properly would touch the whole robot USD; this constant instead corrects only the
+# Camera sensor's own offset (CameraCfg.OffsetCfg below), which both the rendered image
+# and the published TF derive from (wrist_camera.data.pos_w/quat_w_ros), so image and TF
+# stay consistent with each other without an USD re-import.
+#
+# Calibrated empirically 2026-09-21 by bisecting against real captures (not guessed):
+# rotation is about the optical frame's own local X axis. 0 deg = straight down (the
+# behavior every VLM/grasp result all session was validated against). +90 deg = dead
+# level, facing world +X (away from the arm's own base -- renders as empty background,
+# nothing at table height is in frame when perfectly level from 0.4m up). -90 deg = dead
+# level facing world -X (toward the arm's own base/column -- fills the frame with the
+# robot's own structure). Around -25 deg starts bringing the green place-pad into frame
+# at a genuine oblique angle closer to the real robot's photos, but ALSO starts showing
+# a sliver of the robot's own hardware at the bottom of frame, and moves the cube out of
+# center. This is a real trade-off, not a bug to fix further blind: the whole S3-S5 VLM/
+# candidate-generation pipeline this session validated assumed close to the straight-down
+# view, so changing this default would need everything downstream re-validated against
+# the new angle, not just a prettier-looking single frame. Left at 0.0 (matches all
+# existing validated results); pass --wrist-camera-pitch-deg to try the tilted view.
+WRIST_CAMERA_PITCH_CORRECTION_DEG = args.wrist_camera_pitch_deg
 RGB_TOPIC = "/robot129_sim/camera/color/image_raw"
 DEPTH_TOPIC = "/robot129_sim/camera/aligned_depth_to_color/image_raw"
 CAMERA_INFO_TOPIC = "/robot129_sim/camera/aligned_depth_to_color/camera_info"
@@ -458,7 +496,14 @@ def main() -> int:
             update_latest_camera_pose=True,
             offset=CameraCfg.OffsetCfg(
                 pos=(0.0, 0.0, 0.0),
-                rot=(0.0, 0.0, 0.0, 1.0),
+                # Rotation about the camera's own local X ("right") axis -- pitches
+                # the optical forward axis away from the gripper's reach direction.
+                # (x, y, z, w) -- CameraCfg.OffsetCfg.rot's documented order (NOT w,x,y,z).
+                rot=(
+                    math.sin(math.radians(WRIST_CAMERA_PITCH_CORRECTION_DEG) / 2.0),
+                    0.0, 0.0,
+                    math.cos(math.radians(WRIST_CAMERA_PITCH_CORRECTION_DEG) / 2.0),
+                ),
                 convention="ros",
             ),
             spawn=sim_utils.PinholeCameraCfg(
