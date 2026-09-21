@@ -44,7 +44,7 @@ if [[ "$backend" == "gemini" && -z "${GEMINI_API_KEY:-}" ]]; then
   exit 2
 fi
 
-session_dir="$root/out/grasp_motion/sessions_full/$scene_id"
+session_dir="$root/out/grasp_motion/runs/$scene_id"
 mkdir -p "$session_dir"
 scratch="$(mktemp -d)"
 

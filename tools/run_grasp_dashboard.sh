@@ -49,7 +49,10 @@ if [[ "$backend" == "gemini" && -z "${GEMINI_API_KEY:-}" ]]; then
   exit 2
 fi
 
-vllm_dir="$root/out/grasp_motion/dashboard_runs/$scene_id"
+# One folder per scene_id holds everything -- VLM intermediates and the final
+# rendered images together (was two parallel trees, dashboard_runs/ + dashboard/,
+# consolidated 2026-09-21 since nothing needed them kept apart).
+vllm_dir="$root/out/grasp_motion/dashboard/$scene_id"
 mkdir -p "$vllm_dir"
 scratch="$(mktemp -d)"
 
@@ -114,7 +117,7 @@ if [[ -z "$chosen_id" ]]; then
 fi
 
 echo "[4/4] rendering dashboard images (chosen=$chosen_id)"
-dashboard_dir="$root/out/grasp_motion/dashboard/$scene_id"
+dashboard_dir="$vllm_dir"
 "$research_python" "$root/research/scripts/render_run_dashboard.py" \
   --scene-bundle "$root/research/data/scenes/$scene_id" \
   --affordance-json "$vllm_dir/affordance_region.json" \
