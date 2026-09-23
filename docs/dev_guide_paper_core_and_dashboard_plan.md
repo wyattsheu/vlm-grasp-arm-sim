@@ -69,7 +69,7 @@ research/configs/scene_geometry.json   # 方塊/鎚形物的尺寸、位置 —�
 | 啟動模擬（開 WebRTC 直播，給你看即時畫面用） | `bash tools/start_robot129_ros_webrtc.sh --scene pick_place` | 佔用 port 49100，跟 headless 版本不能同時開同一場景 |
 | 看目前狀態 | `bash tools/status_robot129_grasp_sim.sh` 或 `status_robot129_ros_webrtc.sh` | |
 | 關閉 | `bash tools/stop_robot129_grasp_sim.sh` / `stop_robot129_ros_webrtc.sh` / `stop_any_webrtc.sh`（任何 WebRTC，含別人的程式） | |
-| 重置場景到初始狀態 | `ros2 service call /robot129_sim/reset_scene std_srvs/srv/Trigger` | |
+| 重置場景到初始狀態 | `bash tools/reset_robot129_scene.sh`（等同 `ros2 service call /robot129_sim/reset_scene std_srvs/srv/Trigger`，但不用先進 ROS 環境） | 手臂回 HOME、物體回預設位置；手臂還在跑軌跡時會被拒絕（`BUSY`），等它停再按 |
 | 產生一組抓取候選（GT 幾何，不用 VLM） | `python tools/generate_s2_cube_candidates.py <out.json>` | |
 | 用 MTC 對候選規劃 | `ros2 launch robot129_tasks mtc_pick_place_sim.launch.py report_path:=... candidates_path:=... max_candidates:=8` | 這個節點規劃完就結束，不是常駐服務 |
 | 執行規劃出來的動作 | `ros2 run robot129_sim_execution run_grasp_motion --plan <plan.json> --out-dir <dir>` | 送 adapter、驗收三關卡、寫 report.json |
@@ -453,8 +453,15 @@ bash tools/start_robot129_ros_webrtc.sh --scene pick_place_counter
 bash tools/run_real_stack_task.sh "grasp the red block on the table"
 bash tools/run_real_stack_task.sh "place the block on the green pad" --skip-observe
 # VLM_BACKEND=local 走實機的本地 pipeline（需要 localhost:8000 / 8002 的 vLLM）
-# 重置：ros2 service call /robot129_sim/reset_scene std_srvs/srv/Trigger '{}'
+bash tools/reset_robot129_scene.sh        # 方塊掉到奇怪地方：手臂回觀察姿態、方塊回檯面 (0.44, 0)
+bash tools/stop_robot129_ros_webrtc.sh    # 關掉模擬器（釋放 GPU 與 port 49100）
 ```
+
+**Gemini 回 503 怎麼辦**（2026-09-23 實際遇到）：錯誤訊息 `503 UNAVAILABLE ... This model is currently experiencing high demand` 是 Google 端預覽模型 `gemini-robotics-er-2-preview` 太忙，不是模擬器或程式壞掉。實機的 `GeminiRoboticsClient` 碰到例外會直接回 `None`，任務立刻以 `VLM_FAILED` 結束。模擬器外殼（不是實機程式）因此加了：
+
+- **自動重試**：`decide_task` 回 `None` 時等 5 s、10 s、15 s…再問，預設最多多試 4 次，畫面印 `[VLM] RETRY`；`--vlm-retries N` 可調，`report.json` 的 `vlm_attempts` 記錄實際試了幾次。實測第 3 次成功，VLM 步驟約 31 s。
+- **換模型**：`GEMINI_MODEL=gemini-2.5-flash bash tools/run_real_stack_task.sh "..."`，透過實機 client 本來就有的 `model=` 參數傳入；不設就是實機預設模型。換模型後 VLM 點位品質可能不同，結果不能直接跟預設模型比。
+- 重試全部用完還是 `[VLM] FAILED`：等幾分鐘再跑，或換模型。前面沒有 503 訊息的 `NO_DECISION` 才是 VLM 真的看不到目標，要檢查 `vlm_input.png`。
 
 - `sim/scripts/sim_mm_actions_node.py` 只重寫實機 `mm_actions_node.py` 的 ROS 外殼（實機版需要實驗室專用的 `mm_interface` 跟 `cv_bridge`），**grasp/place/Gemini client/IK/servo 全部 import 自 `references/upstream`，一行都沒改、也沒複製進 repo**（`references/` 本來就不進 git）。
 - 模擬器新增實機 driver 同樣介面：`/robot129_sim/piper/joint_cmd`（JointState，joint1–6 + `gripper` 開口 0–0.1 m，串流位置命令）、`/robot129_sim/piper/joint_states_feedback`。深度從 32FC1 公尺轉成 RealSense 的 16UC1 毫米再交給實機程式。
