@@ -504,12 +504,12 @@ bash tools/stop_robot129_ros_webrtc.sh    # 關掉模擬器（釋放 GPU 與 por
 
 - 原因：`base_action.move_arm_to_pose()` 每一步 servo 都送 `gripper = self._get_joint_state()[-1]`，也就是**量到的**夾爪開口。手上有東西時，量到的開口就是物體寬度 → 夾爪目標 = 目前位置 → 夾力歸零 → 物體滑出。
 - 實機也會這樣：查了實機驅動 `nycu-acm/piper_ros`（commit 25c5d25，`piper_ctrl_single_node.py`），`joint_states_feedback` 的 gripper 是量測值（`GetArmGripperMsgs().gripper_state.grippers_angle`），收到命令後呼叫 `GripperCtrl(寬度, effort=1000, ...)`，是**位置命令＋力量上限**，所以實機一樣是「目標 = 現在位置、不出力」。
-- 修正（在 `references/upstream/mm_system` 本地分支 `fix/place-hold-grip`，**尚未 push**，要由維護者 push 到 nycu-acm/mm_system）：
+- 修正（`nycu-acm/mm_system` 分支 `fix/place-hold-grip`，2026-09-23 已 push、**未 merge 到 main**，上實機測過再開 PR；本 repo 的 `patches/mm_system/` 有 patch 備份與還原方法）：
   - `BaseAction` / `SlowBaseAction.move_arm_to_pose()` 加回 docstring 本來就有寫、但參數被拿掉的 `gripper_width=None`；`None` 維持原本行為（夾爪張開時用，例如 grasp 的接近段）。
   - `PlaceAction` 傳 `gripper_width=self._grasp_close_width`，也就是 grasp 閉合到、回 HOME 時一直鎖住的同一個寬度。
 - 模擬器執行的是 `references/upstream/mm_system` **目前 checkout 的分支**；每次的 `report.json` 會寫 `mm_system: {branch, commit, dirty}`，看得出這次跑的是哪一版。切回 `main` 就會重現舊的掉落行為。
 
-**放下時倒下（尚未處理）**：實機 `place.py` 把末端送到「綠墊表面 + `PLACE_HEIGHT_OFFSET_M = 0.07` m」後直接張開。方塊 8 cm 高、夾在上半段，底部離墊子還有幾公分，張開後掉下去就倒了，往 +y 倒半個身長（4 cm）剛好解釋偏移量。實機放品客罐應該有同樣問題，要不要改 offset 或改成「往下降到接觸再放」待決定。
+**放下時倒下（不處理，原 repo 也沒處理）**：實機 `place.py` 把末端送到「綠墊表面 + `PLACE_HEIGHT_OFFSET_M = 0.07` m」後直接張開。方塊 8 cm 高、夾在上半段，底部離墊子還有幾公分，張開後掉下去就倒了，往 +y 倒半個身長（4 cm）剛好解釋偏移量。實機放品客罐應該有同樣問題，要不要改 offset 或改成「往下降到接觸再放」待決定。
 
 **抓取偵測（有沒有夾到）：原本的程式在哪裡**（使用者說過去有、被封印）
 
