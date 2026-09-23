@@ -153,7 +153,7 @@ def load_actions():
 
 
 def make_vlm_client():
-    backend = os.getenv("VLM_BACKEND", "gemini").strip().lower()
+    backend = os.getenv("VLM_BACKEND", "local").strip().lower()
     if backend == "gemini":
         from mm_actions.reasoning.gemini_client import GeminiRoboticsClient
 
@@ -201,9 +201,13 @@ def main() -> int:
                              "(RUNBOOK sec 6). Default fits the 4 cm counter target.")
     parser.add_argument("--skip-observe", action="store_true",
                         help="do not move to OBSERVE first (the real flow runs ed305_arm_pose.py by hand)")
-    parser.add_argument("--vlm-retries", type=int, default=4,
-                        help="extra decide_task attempts when the VLM returns nothing (5 s, 10 s, ... backoff)")
+    parser.add_argument("--vlm-retries", type=int, default=None,
+                        help="extra decide_task attempts when the VLM returns nothing (5 s, 10 s, ... backoff); "
+                             "default 4 for gemini (503 overloads), 0 for local (None there means Molmo2 "
+                             "found no target, which a retry at temperature 0 just repeats)")
     args = parser.parse_args()
+    if args.vlm_retries is None:
+        args.vlm_retries = 4 if os.getenv("VLM_BACKEND", "local").strip().lower() == "gemini" else 0
 
     if not UPSTREAM.is_dir():
         raise SystemExit(f"missing {UPSTREAM} (real-robot code is kept out of git; copy it in first)")

@@ -69,6 +69,7 @@ research/configs/scene_geometry.json   # 方塊/鎚形物的尺寸、位置 —�
 | 啟動模擬（開 WebRTC 直播，給你看即時畫面用） | `bash tools/start_robot129_ros_webrtc.sh --scene pick_place` | 佔用 port 49100，跟 headless 版本不能同時開同一場景 |
 | 看目前狀態 | `bash tools/status_robot129_grasp_sim.sh` 或 `status_robot129_ros_webrtc.sh` | |
 | 關閉 | `bash tools/stop_robot129_grasp_sim.sh` / `stop_robot129_ros_webrtc.sh` / `stop_any_webrtc.sh`（任何 WebRTC，含別人的程式） | |
+| 用實機程式跑一次任務（本地模型／Gemini） | `bash tools/run_real_stack_task.sh "grasp the red block on the table"`，Gemini 前面加 `VLM_BACKEND=gemini` | 本地模式會自動開、關兩個 vLLM；詳見 §5.4.4 |
 | 重置場景到初始狀態 | `bash tools/reset_robot129_scene.sh`（等同 `ros2 service call /robot129_sim/reset_scene std_srvs/srv/Trigger`，但不用先進 ROS 環境） | 手臂回 HOME、物體回預設位置；手臂還在跑軌跡時會被拒絕（`BUSY`），等它停再按 |
 | 產生一組抓取候選（GT 幾何，不用 VLM） | `python tools/generate_s2_cube_candidates.py <out.json>` | |
 | 用 MTC 對候選規劃 | `ros2 launch robot129_tasks mtc_pick_place_sim.launch.py report_path:=... candidates_path:=... max_candidates:=8` | 這個節點規劃完就結束，不是常駐服務 |
@@ -450,29 +451,52 @@ ros2 service call /robot129_sim/capture_scene_manifest std_srvs/srv/Trigger "{}"
 
 ```bash
 bash tools/start_robot129_ros_webrtc.sh --scene pick_place_counter
-bash tools/run_real_stack_task.sh "grasp the red block on the table"
+bash tools/run_real_stack_task.sh "grasp the red block on the table"                  # 本地模型（預設）
+VLM_BACKEND=gemini bash tools/run_real_stack_task.sh "grasp the red block on the table"   # 遠端 Gemini
 bash tools/run_real_stack_task.sh "place the block on the green pad" --skip-observe
-# VLM_BACKEND=local 走實機的本地 pipeline（需要 localhost:8000 / 8002 的 vLLM）
 bash tools/reset_robot129_scene.sh        # 方塊掉到奇怪地方：手臂回觀察姿態、方塊回檯面 (0.44, 0)
 bash tools/stop_robot129_ros_webrtc.sh    # 關掉模擬器（釋放 GPU 與 port 49100）
 ```
 
+**選本地模型還是遠端 Gemini**（`VLM_BACKEND`，跟實機 `scripts/run_grasp.sh` 同一個開關）
+
+| | 本地 `local`（預設） | 遠端 `gemini` |
+|---|---|---|
+| 怎麼選 | 不用設，或 `VLM_BACKEND=local` | 指令前加 `VLM_BACKEND=gemini` |
+| 模型 | 兩階段：stage1 `Qwen/Qwen3-VL-4B-Instruct` 只讀文字、決定動作跟目標名稱；stage2 `allenai/Molmo2-4B` 看圖指出像素點，找不到就回 None | `gemini-robotics-er-2-preview` 一次做完 |
+| 實機程式 | `LocalPipelineClient`（`reasoning/local_pipeline_client.py`），未修改 | `GeminiRoboticsClient`，未修改 |
+| 要什麼 | 本機 GPU 約 11 GB + 14 GB（兩張卡各放一個）；權重已在 `/mnt/HDD4/wyattsheu/models/robot129_vllm/huggingface`（沒有的話 `bash tools/download_robot129_vllm_models.sh legacy-mm`） | API key（自動讀 `~/.config/robot129_gemini.env`）、網路 |
+| 速度（實測） | 開引擎約 1.5–2 分鐘；VLM 本身 1.1 s | 不用開引擎；VLM 3 s～30 s 以上（塞車時要重試） |
+| 會失敗在哪 | GPU 被別人占滿時引擎起不來（見下） | Google 塞車回 503 |
+
+實機預設就是 `local`（`mm_actions_node.py` 的 `os.getenv("VLM_BACKEND", "local")`），模擬器照做，所以**不設就是本地**。
+
+**本地的兩個 vLLM：每次執行才開，跑完自動關**
+
+- `run_real_stack_task.sh` 在 `local` 模式下會自己呼叫 `tools/start_robot129_local_engines.sh` 開兩個引擎，任務結束（成功、失敗、Ctrl-C 都一樣）就呼叫 `tools/stop_robot129_local_engines.sh` 關掉，閒置時**不占 GPU**。不用自己開關。
+- 連續跑好幾次（例如 grasp 接 place）想省每次 1.5–2 分鐘的開機時間：`KEEP_LOCAL_ENGINES=1 bash tools/run_real_stack_task.sh "..."`，全部跑完**記得** `bash tools/stop_robot129_local_engines.sh`。
+- Port 是 **8010 / 8012**，不是實機的 8000 / 8002：這台機器的 8000、8002 已被別的程式占用。實機 client 本來就讀 `STAGE1_BASE_URL` / `STAGE2_BASE_URL` 環境變數，腳本用這兩個變數指過去，程式碼不用改；served model name 跟實機完全一樣（client 每個請求都會帶）。
+- 每個引擎自動放到當下空間最多的那張 GPU，依序啟動（DEVLOG 2026-08-28 記過同時 profiling 會撞 race）。記憶體額度 stage1 0.12、stage2 0.15（佔整張 96 GB 卡的比例），依實測用量抓：兩張卡長期被別的使用者各占約 73 GB，只剩 16–24 GB。
+- 引擎起不來、錯誤是 `Free memory on device ... is less than desired GPU memory utilization`：GPU 被別人用掉了。`nvidia-smi` 看一下；可以用 `STAGE1_GPU_UTIL` / `STAGE2_GPU_UTIL` 調低一點，或改走 `VLM_BACKEND=gemini`。log 在 `out/local_engines_robot129/*.log`。
+- 跟實機不同的地方（誠實記錄）：實機是 docker 容器、vLLM 0.19；這裡是 venv `env_robot129_vllm`、vLLM 0.29。實機的完整啟動參數在 `new_modle_test/production_client/launch_local_engines.sh`，那個檔案不在任何 repo 裡，這裡的參數（`--max-model-len`、記憶體額度）是自己訂的。模型 revision 固定在 Qwen `ebb281ec`、Molmo2 `042abfa7`，實機用哪個 revision 未知。
+
 **Gemini 回 503 怎麼辦**（2026-09-23 實際遇到）：錯誤訊息 `503 UNAVAILABLE ... This model is currently experiencing high demand` 是 Google 端預覽模型 `gemini-robotics-er-2-preview` 太忙，不是模擬器或程式壞掉。實機的 `GeminiRoboticsClient` 碰到例外會直接回 `None`，任務立刻以 `VLM_FAILED` 結束。模擬器外殼（不是實機程式）因此加了：
 
-- **自動重試**：`decide_task` 回 `None` 時等 5 s、10 s、15 s…再問，預設最多多試 4 次，畫面印 `[VLM] RETRY`；`--vlm-retries N` 可調，`report.json` 的 `vlm_attempts` 記錄實際試了幾次。實測第 3 次成功，VLM 步驟約 31 s。
+- **自動重試**（只有 gemini 預設開；local 預設不重試，因為 local 回 `None` 通常是 Molmo2 真的沒找到，溫度 0 重問只會一樣）：`decide_task` 回 `None` 時等 5 s、10 s、15 s…再問，預設最多多試 4 次，畫面印 `[VLM] RETRY`；`--vlm-retries N` 可調，`report.json` 的 `vlm_attempts` 記錄實際試了幾次。實測第 3 次成功，VLM 步驟約 31 s。
 - **換模型**：`GEMINI_MODEL=gemini-2.5-flash bash tools/run_real_stack_task.sh "..."`，透過實機 client 本來就有的 `model=` 參數傳入；不設就是實機預設模型。換模型後 VLM 點位品質可能不同，結果不能直接跟預設模型比。
 - 重試全部用完還是 `[VLM] FAILED`：等幾分鐘再跑，或換模型。前面沒有 503 訊息的 `NO_DECISION` 才是 VLM 真的看不到目標，要檢查 `vlm_input.png`。
 
-- `sim/scripts/sim_mm_actions_node.py` 只重寫實機 `mm_actions_node.py` 的 ROS 外殼（實機版需要實驗室專用的 `mm_interface` 跟 `cv_bridge`），**grasp/place/Gemini client/IK/servo 全部 import 自 `references/upstream`，一行都沒改、也沒複製進 repo**（`references/` 本來就不進 git）。
+- `sim/scripts/sim_mm_actions_node.py` 只重寫實機 `mm_actions_node.py` 的 ROS 外殼（實機版需要實驗室專用的 `mm_interface` 跟 `cv_bridge`），**grasp/place/Gemini client/本地 pipeline client/IK/servo 全部 import 自 `references/upstream`，一行都沒改、也沒複製進 repo**（`references/` 本來就不進 git）。
 - 模擬器新增實機 driver 同樣介面：`/robot129_sim/piper/joint_cmd`（JointState，joint1–6 + `gripper` 開口 0–0.1 m，串流位置命令）、`/robot129_sim/piper/joint_states_feedback`。深度從 32FC1 公尺轉成 RealSense 的 16UC1 毫米再交給實機程式。
 - 需要 venv `/mnt/HDD4/wyattsheu/env_robot129_realstack`（疊在 `env_robot129_ros` 上，裝實機 `requirements.txt` 的 pinned 版本：rtb fork、numpy 1.26.4、qpsolvers、quadprog、google-genai、rerun-sdk）。
 - 每次輸出在 `out/grasp_motion/real_stack/<時間>/`：`vlm_input.png`、`vlm_debug.png`（VLM 點的位置）、`rerun.rrd`（實機程式本來就會 log 的 rerun 資料）、`report.json`（含模擬器的物體位置前後，**這是唯一能確認有沒有真的夾到的依據**）。
 
-#### 5.4.5 實測結果（2026-09-23，Gemini robotics-er-2）
+#### 5.4.5 實測結果（2026-09-23，Gemini robotics-er-2 與本地 Qwen+Molmo2）
 
 | 動作 | 實機程式回報 | 模擬器真值 |
 |---|---|---|
 | grasp | 全部 stage SUCCESS | ✅ 真的夾到：兩指各約 7 N、開口 3.95 cm，物體從檯面 (0.44, 0, 0.29) 帶回 (0.13, 0, 0.31)，重跑一次結果相同 |
+| grasp（本地 Qwen+Molmo2） | 全部 stage SUCCESS，VLM 1.06 s | ✅ 真的夾到：Molmo2 點在 (349, 190)，跟 Gemini 的 (346, 182) 差不到 10 px；物體帶回 (0.14, 0, 0.33)，抬高 3.6 cm。跑完兩個引擎自動關、GPU 用量回到原本 |
 | place | 全部 stage SUCCESS，`place complete` | ❌ 物體在 place 的 servo **一開始就掉到地上**，沒到綠墊 |
 
 place 掉落的原因（有 log 佐證，不是猜的）：實機 `base_action.move_arm_to_pose()` 每一步 servo 都送 `gripper = self._get_joint_state()[-1]`，也就是**量到的**夾爪開口。模擬器夾爪是純位置控制，目標 = 目前開口 → 夾力歸零 → 物體滑出。實機會不會一樣掉，取決於 PiPER 夾爪不施力時是否靠機構摩擦撐住（不可反驅），`references/` 裡沒有資料，**需要實機確認**。模擬器目前**刻意沒有**替這件事加假設。
