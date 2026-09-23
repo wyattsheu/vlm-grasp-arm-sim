@@ -259,7 +259,7 @@ YCB 是機器人抓取研究的標準資料集（馬克杯、洋芋片盒、電�
 
 ### 5.2 已實作＋對 live Isaac 驗證：`--scene-manifest`
 
-`sim/scripts/run_robot129_ros_webrtc.py` 新增 `--scene-manifest <path.json>` 參數，只對 `--scene pick_place`/`pick_place_hammer` 生效，純粹「附加」——不改抓取目標、不改地板、不改放置點，manifest 裡的每個物體一律 spawn 成 kinematic/static（不會掉落、不參與物理碰撞的動力學運算），純粹是視覺／干擾雜物層，刻意不去動 `grasp_candidates.py`／MTC 碰撞已經驗證過的 `table_z_m=0.0` 假設。
+`sim/scripts/run_robot129_ros_webrtc.py` 新增 `--scene-manifest <path.json>` 參數，只對 `--scene pick_place`/`pick_place_hammer` 生效，純粹「附加」——不改抓取目標、不改地板、不改放置點，manifest 裡的每個物體**預設** spawn 成 kinematic/static（不會掉落、不參與物理碰撞的動力學運算），純粹是視覺／干擾雜物層（2026-09-21 起可以用 `"physics": "dynamic"` 改成真的有重力，見 §5.3），刻意不去動 `grasp_candidates.py`／MTC 碰撞已經驗證過的 `table_z_m=0.0` 假設。
 
 ```jsonc
 // research/configs/scenes/cluttered_desk_01.json（已提交，對 live Isaac 驗證過）
@@ -301,6 +301,128 @@ bash tools/start_robot129_grasp_sim.sh --scene pick_place --scene-manifest "$(pw
 - `target_cube` 本身納入 manifest（現在還是獨立寫死的抓取目標，manifest 只負責加雜物）
 - 桌子／教室背景 USD（`SeattleLabTable`、`Simple_Warehouse` 已查到路徑，還沒接——這個風險比雜物高，因為要確認桌面高度跟 `table_z_m=0.0` 對得上，貿然換背景可能讓抓取的參考平面跟著跑掉）
 - `usd_asset` 若要變成「可以抓的干擾物」（不只是雜物），需要碰撞體不再是軸對齊盒子，`grasp_candidates.py` 的篩選邏輯要跟著調整
+
+### 5.3 新手教學：怎麼編輯場景、存起來、下次再用（2026-09-21）
+
+#### 5.3.1 先搞清楚一件事：WebRTC 畫面裡改的東西「不會」被存下來
+
+WebRTC 只是把 Isaac 正在跑的那個場景「直播」給你看，你在畫面裡拖動物體，改的是**這一次執行中、記憶體裡**的狀態。Isaac 程序一關（`stop_robot129_ros_webrtc.sh`、當機、重開機），這些改動就全部消失，下次啟動又回到程式寫死的樣子。
+
+真正能「存下來、下次選擇要用哪個場景」的東西只有一個：**scene manifest JSON 檔**。每個 JSON 檔 = 一個場景配置，啟動時用 `--scene-manifest <檔案>` 挑一個。想要多個場景，就存多個 JSON（例如 `cluttered_desk_01.json`、`cluttered_desk_02.json`）。
+
+所以流程是：
+
+```
+編輯 JSON  ──(--scene-manifest)──►  Isaac 場景  ──(capture_scene_manifest 服務)──►  新的 JSON
+   ▲                                                                              │
+   └──────────────────────────── 下次啟動時選它 ◄──────────────────────────────────┘
+```
+
+有兩條路可以產生 JSON：**(A) 直接手改 JSON**（最可靠，建議新手先用這個），或 **(B) 讓 Isaac 把目前場景「拍照」寫回 JSON**（capture-back，見 5.3.4）。
+
+#### 5.3.2 路線 A：手改 JSON（建議先從這裡開始）
+
+1. 複製一份現成的當起點：
+   ```bash
+   cd /mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913
+   cp research/configs/scenes/cluttered_desk_01.json research/configs/scenes/my_scene.json
+   ```
+2. 用編輯器打開 `my_scene.json`，改 `objects` 清單（欄位說明見 5.3.3）。
+3. 啟動時指定它：
+   ```bash
+   bash tools/stop_any_webrtc.sh      # 先確保沒有舊的在跑，不然 start 會直接回報「已在執行」而不會載入新檔
+   bash tools/start_robot129_ros_webrtc.sh --scene pick_place --scene-manifest "$(pwd)/research/configs/scenes/my_scene.json"
+   ```
+4. 看 WebRTC 畫面確認位置對不對，不對就回到步驟 2 改數字、重啟。
+
+**座標怎麼看**：世界座標原點在手臂底座正下方，單位公尺。`x` 往手臂正前方，`y` 往手臂左邊，`z` 往上，地板 `z=0`。抓取目標方塊預設在 `(0.32, 0.0)`，綠色放置區在 `(0.27, -0.12)`——雜物盡量不要擺在這兩點 5 cm 以內，不然會擋到抓取／放置路徑。現有 `cluttered_desk_01.json` 的擺法（`x` 0.15–0.42、`y` −0.12–0.15）已驗證不影響核心抓取，照這個範圍擺最保險。
+
+**注意**：manifest 的 `id` 會變成 prim 路徑 `/World/Clutter/<id>`，同一檔案內 `id` 不能重複。
+
+#### 5.3.3 欄位說明（`scene_manifest_v1`）
+
+| 欄位 | 適用 | 預設 | 意思 |
+|---|---|---|---|
+| `id` | 全部 | `clutter_<序號>` | 物體名稱，不可重複 |
+| `kind` | 全部 | `primitive_box` | `primitive_box`（程式產生的方塊，免下載）或 `usd_asset`（載入 USD 模型檔） |
+| `xy_m` | 全部 | `[0,0]` | 物體中心的 x、y（公尺） |
+| `z_m` | 全部 | `0.05` | 物體中心高度。方塊放在地上 = 邊長的一半（4 cm 方塊填 `0.02`） |
+| `yaw_rad` | 全部 | `0.0` | 繞垂直軸旋轉（弧度，`0.785` ≈ 45°） |
+| `physics` | 全部 | `static` | `static`：固定不動、沒有重力；`dynamic`：有重力、會掉、會被推、會被夾 |
+| `mass_kg` | `dynamic` | `0.05` | 質量（公斤），只有 `dynamic` 才用得到 |
+| `size_m` | `primitive_box` | `[0.05,0.05,0.05]` | 長寬高（公尺） |
+| `color_rgb` | `primitive_box` | `[0.5,0.5,0.5]` | 顏色，0–1 |
+| `usd_path` | `usd_asset` | 必填 | 模型檔路徑／URL，可用清單見 §5.1b |
+| `scale` | `usd_asset` | `[1,1,1]` | 縮放 |
+
+範例——加一個會掉下來、可以被推的黃色小方塊：
+
+```json
+{"id": "yellow_block", "kind": "primitive_box", "physics": "dynamic", "mass_kg": 0.02,
+ "size_m": [0.03, 0.03, 0.03], "color_rgb": [0.9, 0.7, 0.1],
+ "xy_m": [0.30, 0.20], "z_m": 0.10}
+```
+
+#### 5.3.4 「要怎麼有物理性質？」——`physics` 欄位
+
+**只是「載入模型」不會自動有物理**。在這個專案裡，一個物體要不要受重力、會不會被推動，是由 spawn 時套的 `RigidBodyPropertiesCfg` 決定的，manifest 用 `physics` 欄位控制：
+
+- `"static"`（預設）：`kinematic_enabled=True, disable_gravity=True`。有碰撞形狀（手臂撞到會被擋），但物體本身永遠釘在原地，不會掉也推不動。適合當背景雜物。
+- `"dynamic"`：`kinematic_enabled=False, disable_gravity=False`，再加上 `MassPropertiesCfg(mass=mass_kg)`。跟抓取目標 `target_cube` 同一種設定——會掉落、會被撞倒、可以被夾起來。
+
+**已實測**（2026-09-21）：一個 `dynamic`、3 cm 的方塊從 `z_m: 0.10` 生成，約 8 秒後 capture 讀到 `z = 0.015`——剛好是邊長的一半，代表它真的掉下來並停在地板上。
+
+⚠️ `z_m` 設太低（物體一半插進地板）的 `dynamic` 物體會在第一個 physics step 被彈飛。不確定高度就設高一點讓它自己掉下來。
+
+⚠️ `usd_asset` 設成 `dynamic` 可以生成，但**會讓 capture 失真**（見 5.3.6），而且 YCB 模型的碰撞形狀沒有特別驗證過，目前建議 `usd_asset` 維持 `static`。
+
+#### 5.3.5 路線 B：把 Isaac 目前的場景「拍照」寫回 JSON（capture-back）
+
+Isaac 在跑的時候，多了一個 ROS 服務 `/robot129_sim/capture_scene_manifest`：呼叫它，Isaac 會把每個 manifest 物體**現在**的位置／yaw 寫成一個新的 manifest JSON。用途：讓 `dynamic` 物體自己掉落、被手臂推過之後，把「落定後的樣子」存成下一次的起點。
+
+```bash
+cd /mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913
+micro=/mnt/HDD4/wyattsheu/tools/micromamba/micromamba
+"$micro" run -p /mnt/HDD4/wyattsheu/env_robot129_ros bash -lc '
+source /mnt/HDD4/wyattsheu/env_robot129_ros/setup.bash
+source ros2_ws/install/setup.bash
+export ROS_DOMAIN_ID=129 ROS_NAMESPACE=/robot129_sim RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+ros2 service call /robot129_sim/capture_scene_manifest std_srvs/srv/Trigger "{}"
+'
+# 成功回應：success=True, message='captured 4 object(s) -> .../research/configs/scenes/captured_manifest.json'
+```
+
+- 預設寫到 `research/configs/scenes/captured_manifest.json`，**每次呼叫都會覆蓋**。要留下來就立刻改名：`mv research/configs/scenes/captured_manifest.json research/configs/scenes/my_scene_v2.json`
+- 輸出路徑也可以改 ROS 參數 `capture.output_path`，但參數掛在節點 `/robot129_sim/isaac_articulation_bridge` 上（`ros2 param set /robot129_sim/isaac_articulation_bridge capture.output_path /abs/path.json`）；直接改名比較簡單。
+- 沒有用 `--scene-manifest` 啟動時呼叫，會回 `success=False`，不會寫檔。
+- 寫出來的檔案可以直接餵回 `--scene-manifest`——已實測「載入 → capture → 用 capture 出來的檔案重啟」整圈可以跑、位置對得上（包含 cracker_box 的 `yaw_rad: 0.4`）。
+- 檔案裡的 `_provenance` 欄位記錄是在哪個 sim time 拍的，Isaac 載入時會忽略它。
+
+**關於「在 WebRTC 畫面裡拖物體」**：capture 讀的是 PhysX 模擬中的即時位置，所以任何讓 `dynamic` 方塊移動的方式（重力、手臂推、Isaac 視窗裡 Shift+滑鼠拖曳這種物理拖曳）拍下來都會反映出來。但**在這個 WebRTC 直播介面裡實際用滑鼠拖曳，我沒有測過**——`static` 物體本來就拖不動（kinematic），`dynamic` 物體理論上可以用物理拖曳，但請自己試一次再依賴它。可靠的路線還是 A（改 JSON）。
+
+#### 5.3.6 已知限制（誠實記錄）
+
+**`usd_asset` 物體的 capture 不是即時位置，而是它當初被生成的位置。**
+
+原因是除錯時發現的 Isaac Sim 原生 crash（沒有 Python traceback，log 只剩 `omni.hydratexture.plugin was already released` + `Unexpected reference count of 2 for UsdStage`）。用 bisection 逐一排除後，觸發條件是：**對 `usd_asset`（引用外部 USD 檔、例如 YCB 馬克杯）的 IsaacLab `RigidObject` Python handle「碰第二次」**——不論是把 spawn 時的 handle 保存下來跨過 `sim.reset()`（啟動約 10 秒就 crash），還是事後用 `RigidObject(RigidObjectCfg(prim_path=..., spawn=None))` 重新包一次（呼叫 capture 當下 crash）。`primitive_box` 兩種做法都沒問題。
+
+另一條路「直接讀 USD stage 上的 transform」也試過，不能用：PhysX 不會每一幀把模擬結果寫回 USD 屬性，讀到的永遠是生成位置（而且那次連 cracker_box 的 yaw 0.4 都讀成 0）。
+
+所以目前的行為是：
+- `primitive_box`：capture 讀**即時**位置（先呼叫 `update()` 刷新快取再讀，不然會拿到舊值——這也是除錯中發現的第二個坑）。
+- `usd_asset`：capture 原樣寫回**生成時**的 `xy_m/z_m/yaw_rad`。因為 `usd_asset` 預設 `static` 本來就不會動，這在預設情況下沒有誤差；只有你把 `usd_asset` 設成 `dynamic` 並讓它移動過，capture 才會跟實際位置不符。
+
+這是 Isaac Sim 內部的問題，不是這支腳本能修的；程式碼裡 `spawn_clutter_from_manifest()` 的 docstring 有同樣的完整說明。
+
+#### 5.3.7 常見狀況
+
+| 症狀 | 原因／處理 |
+|---|---|
+| 改了 JSON，重啟後畫面沒變 | 舊的 Isaac 還在跑，`start` 只回報「已在執行」沒有重新載入。先 `bash tools/stop_any_webrtc.sh` |
+| log 有 `Could not perform 'modify_rigid_body_properties' on any prims under: '/World/Clutter/mug'` | `usd_asset` 每次都會出現，是無害警告，正常啟動的 log 裡也有 |
+| 第一次用某個 YCB 模型啟動很慢 | 正在從 NVIDIA CDN 下載，之後會用 `/tmp/https/...` 的快取 |
+| `SCENE_MANIFEST skipping <id>: unknown kind` | `kind` 拼錯，只接受 `primitive_box` / `usd_asset` |
+| `dynamic` 物體一開始就飛走 | `z_m` 太低、插進地板或跟別的物體重疊，調高 `z_m` |
 
 ---
 

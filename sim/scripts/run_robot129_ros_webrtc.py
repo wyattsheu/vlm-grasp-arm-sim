@@ -296,11 +296,14 @@ def yaw_to_quat_xyzw(yaw: float):
 
 def spawn_clutter_from_manifest(manifest_path: str) -> list:
     """--scene-manifest support (see the arg's help text and docs/dev_guide_
-    paper_core_and_dashboard_plan.md §5): spawn each listed object as a static,
-    kinematic prop -- a distractor clutter layer, not a new graspable target.
-    Returns the list of spawned RigidObject handles (nothing currently reads
-    them back; kept so a future manifest field, e.g. per-object pose reset on
-    reset_scene, has something to hold onto without re-deriving prim paths).
+    paper_core_and_dashboard_plan.md §5): spawn each listed object as a
+    kinematic prop by default -- a distractor clutter layer, not a new
+    graspable target. Returns a list of dicts (NOT bare RigidObject handles,
+    since 2026-09-21's capture-back feature needs each object's manifest
+    metadata alongside its live handle to write a manifest entry back out):
+    {"id", "kind", "physics", "prim_path", plus the kind-specific fields
+    (size_m/color_rgb for primitive_box, usd_path/scale for usd_asset), and
+    "rigid_obj" -- ONLY for kind="primitive_box", see the crash note below.
 
     kind="primitive_box": a flat-shaded box, no external asset needed.
     kind="usd_asset": loads usd_path as-is (NVIDIA's Isaac asset CDN paths,
@@ -308,6 +311,34 @@ def spawn_clutter_from_manifest(manifest_path: str) -> list:
     2026-09-20 -- see the dev guide for the checked list). Isaac fetches and
     locally caches USD files referenced this way; the first spawn of a given
     asset may take longer while it downloads.
+
+    KNOWN LIMITATION, confirmed by direct testing 2026-09-21, not worked
+    around (it is a native Isaac Sim crash, not something fixable from this
+    script): touching a usd_asset-spawned RigidObject's Python handle a
+    SECOND time -- either by keeping the original handle alive past this
+    function, or by freshly re-wrapping the same prim_path later with
+    RigidObject(RigidObjectCfg(prim_path=..., spawn=None)) -- crashes Isaac
+    with no Python traceback (signature: "Plugin interface for a client:
+    omni.hydratexture.plugin was already released" + "Unexpected reference
+    count of 2 for UsdStage ... while being closed"), whether that second
+    touch happens moments later during sim.reset() or tens of seconds later
+    from inside a ROS service callback. kind="primitive_box" (plain authored
+    geometry, not a referenced/instanced external stage) has neither problem
+    -- both retaining its handle and re-wrapping it later are fine. So:
+    primitive_box keeps "rigid_obj" in its record and reports its true LIVE
+    pose on capture; usd_asset does not, and capture_scene_manifest instead
+    re-emits its ORIGINAL manifest-spawn pose unchanged (it is documented as
+    a static/kinematic visual backdrop by default anyway -- see physics=
+    below -- so this only matters if you set physics="dynamic" on one, in
+    which case capture will not reflect where it actually settled).
+
+    physics="static" (default): kinematic, disable_gravity -- never falls,
+    never gets pushed, only useful as a fixed visual/collision backdrop.
+    physics="dynamic": real gravity + mass (mass_kg field, default 0.05) --
+    the object can fall, be knocked over, or be pushed by the arm, same as
+    the pick_place target cube's own RigidBodyPropertiesCfg. Requested
+    2026-09-21 alongside the capture-back feature so a WebRTC-dragged object
+    can actually be picked up too, not just moved once by hand.
     """
     manifest = json.loads(Path(manifest_path).read_text())
     spawned = []
@@ -318,16 +349,24 @@ def spawn_clutter_from_manifest(manifest_path: str) -> list:
         z = float(obj.get("z_m", 0.05))
         yaw = float(obj.get("yaw_rad", 0.0))
         kind = obj.get("kind", "primitive_box")
+        physics = obj.get("physics", "static")
+        dynamic = physics == "dynamic"
+        rigid_props = sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=not dynamic, disable_gravity=not dynamic,
+        )
+        mass_props = sim_utils.MassPropertiesCfg(mass=float(obj.get("mass_kg", 0.05))) if dynamic else None
 
+        record = {"id": obj_id, "kind": kind, "physics": physics}
         if kind == "primitive_box":
             size = tuple(obj.get("size_m", [0.05, 0.05, 0.05]))
             color = tuple(obj.get("color_rgb", [0.5, 0.5, 0.5]))
             spawn_cfg = sim_utils.CuboidCfg(
-                size=size,
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
+                size=size, rigid_props=rigid_props, mass_props=mass_props,
                 collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, metallic=0.05),
             )
+            record["size_m"] = list(size)
+            record["color_rgb"] = list(color)
         elif kind == "usd_asset":
             usd_path = obj["usd_path"]
             scale = tuple(obj.get("scale", [1.0, 1.0, 1.0]))
@@ -336,6 +375,13 @@ def spawn_clutter_from_manifest(manifest_path: str) -> list:
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, disable_gravity=True),
                 collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
             )
+            record["usd_path"] = usd_path
+            record["scale"] = list(scale)
+            # capture_scene_manifest re-emits this unchanged for usd_asset objects --
+            # see the crash note above for why it can't safely re-read a live pose.
+            record["spawn_xy_m"] = [xy[0], xy[1]]
+            record["spawn_z_m"] = z
+            record["spawn_yaw_rad"] = yaw
         else:
             print(f"[ROBOT129 ROS WEBRTC] SCENE_MANIFEST skipping {obj_id}: unknown kind={kind!r}", flush=True)
             continue
@@ -348,9 +394,24 @@ def spawn_clutter_from_manifest(manifest_path: str) -> list:
                 ),
             )
         )
-        spawned.append(rigid_obj)
-        print(f"[ROBOT129 ROS WEBRTC] SCENE_MANIFEST spawned {obj_id} kind={kind} at xy={xy}", flush=True)
+        record["prim_path"] = prim_path
+        if kind == "primitive_box":
+            record["rigid_obj"] = rigid_obj
+        else:
+            del rigid_obj  # see the docstring above -- must not be retained for kind="usd_asset"
+        spawned.append(record)
+        print(f"[ROBOT129 ROS WEBRTC] SCENE_MANIFEST spawned {obj_id} kind={kind} physics={physics} at xy={xy}", flush=True)
     return spawned
+
+
+def quat_wxyz_to_yaw(w: float, x: float, y: float, z: float) -> float:
+    """Yaw (rotation about world Z) from a wxyz quaternion, ignoring any
+    roll/pitch component -- correct only for objects that stayed upright
+    (true for a dragged-in-WebRTC object that wasn't also tipped over; the
+    manifest schema has no roll/pitch fields to round-trip those anyway)."""
+    siny_cosp = 2.0 * (w * z + x * y)
+    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    return math.atan2(siny_cosp, cosy_cosp)
 
 
 def yaw_to_quat_xyzw_wxyz(yaw: float):
@@ -392,6 +453,8 @@ def main() -> int:
     cube = None
     left_contact = None
     right_contact = None
+    clutter_objects: list = []  # populated below iff --scene-manifest was given; read by the
+    # capture_scene_manifest service (declared later in main()) to write live poses back out.
     if pick_place:
         # Dynamic cube: real gravity from the start, realistic (not exaggerated) friction.
         # Unlike sim/scripts/verify_robot129_physics_grasp.py this spawns ON the floor and
@@ -448,7 +511,7 @@ def main() -> int:
             translation=(PLACE_XY_DEFAULT[0], PLACE_XY_DEFAULT[1], 0.001),
         )
         if args.scene_manifest:
-            spawn_clutter_from_manifest(args.scene_manifest)
+            clutter_objects = spawn_clutter_from_manifest(args.scene_manifest)
         left_contact = ContactSensor(
             ContactSensorCfg(
                 prim_path="/World/Robot/link7", update_period=0, history_length=1,
@@ -1111,8 +1174,69 @@ def main() -> int:
             response.message = "no-op: recording already in requested state"
         return response
 
+    # Reverse of --scene-manifest: freeze the CURRENT live pose of every clutter object
+    # (including anything you just dragged in the WebRTC viewport with Shift+drag) back
+    # into a manifest JSON, so a drag-to-arrange session becomes something you can
+    # actually pass to the next --scene-manifest run instead of evaporating when this
+    # process exits. Requested 2026-09-21 alongside the physics="dynamic" option above.
+    # Trigger has no request fields, so the output path is a parameter, following the
+    # same pattern reset_scene's cube_xy/cube_yaw params already use in this file --
+    # set it with `ros2 param set` before calling, or just take the default.
+    node.declare_parameter(
+        "capture.output_path", str(root / "research" / "configs" / "scenes" / "captured_manifest.json"),
+    )
+
+    def handle_capture_scene_manifest(request, response):
+        if not clutter_objects:
+            response.success = False
+            response.message = "no clutter objects to capture -- this process wasn't started with --scene-manifest"
+            return response
+        out_path = Path(node.get_parameter("capture.output_path").value)
+        objects_out = []
+        for rec in clutter_objects:
+            entry = {"id": rec["id"], "kind": rec["kind"], "physics": rec["physics"]}
+            if rec["kind"] == "primitive_box":
+                # Safe to read a true live pose: see the spawn_clutter_from_manifest
+                # docstring -- only usd_asset's referenced/instanced prims crash Isaac
+                # when their RigidObject handle is touched a second time.
+                rigid_obj = rec["rigid_obj"]
+                # .data is timestamp-cached and only refreshes after update(); advance()
+                # never updates clutter objects, so without this it returns a stale pose.
+                rigid_obj.update(sim.get_physics_dt())
+                pos = rigid_obj.data.root_pos_w.torch[0].detach().cpu().numpy()
+                quat = rigid_obj.data.root_quat_w.torch[0].detach().cpu().numpy()  # (w, x, y, z)
+                entry["xy_m"] = [float(pos[0]), float(pos[1])]
+                entry["z_m"] = float(pos[2])
+                entry["yaw_rad"] = quat_wxyz_to_yaw(*(float(v) for v in quat))
+                entry["size_m"] = rec["size_m"]
+                entry["color_rgb"] = rec["color_rgb"]
+            elif rec["kind"] == "usd_asset":
+                # No live re-read (see docstring): re-emits the pose it was spawned at.
+                # Only loses accuracy if this object also had physics="dynamic" and moved.
+                entry["xy_m"] = rec["spawn_xy_m"]
+                entry["z_m"] = rec["spawn_z_m"]
+                entry["yaw_rad"] = rec["spawn_yaw_rad"]
+                entry["usd_path"] = rec["usd_path"]
+                entry["scale"] = rec["scale"]
+            objects_out.append(entry)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps({
+            "schema_version": "scene_manifest_v1",
+            "_provenance": f"captured live from a running --scene-manifest session via "
+                            f"/robot129_sim/capture_scene_manifest at sim_time={frame_state['sim_time']:.2f}s "
+                            f"-- positions reflect whatever was last dragged/settled, not the original manifest.",
+            "objects": objects_out,
+        }, indent=2))
+        response.success = True
+        response.message = f"captured {len(objects_out)} object(s) -> {out_path}"
+        print(f"[ROBOT129 ROS WEBRTC] CAPTURE_SCENE_MANIFEST {response.message}", flush=True)
+        return response
+
     reset_service = node.create_service(Trigger, "/robot129_sim/reset_scene", handle_reset_scene)
     recording_service = node.create_service(SetBool, "/robot129_sim/recording", handle_recording)
+    capture_manifest_service = node.create_service(
+        Trigger, "/robot129_sim/capture_scene_manifest", handle_capture_scene_manifest
+    )
     publish_scene_state()
 
     print("[ROBOT129 ROS WEBRTC] READY", flush=True)
