@@ -1,0 +1,103 @@
+From b1c309d3cefbded78933e7ec6f53897c6c8d7512 Mon Sep 17 00:00:00 2001
+From: wyattsheu <wyattsheu@gmail.com>
+Date: Wed, 23 Sep 2026 21:38:25 +0800
+Subject: [PATCH] fix(place): hold grasp width while carrying to the place pose
+
+move_arm_to_pose re-sent the *measured* gripper width on every servo step. With an
+object in hand the measured width is the object's width, so the gripper target became
+its current position and the grip force went to zero: the object slipped out as soon
+as the place motion started (reproduced in the Isaac sim of this exact code; piper_ros
+GripperCtrl is a position command, so the real arm gets the same zero-error target).
+
+- BaseAction/SlowBaseAction.move_arm_to_pose: restore the gripper_width argument its
+  docstring already documented; None keeps the old behaviour (used while the gripper
+  is open, e.g. the grasp approach).
+- PlaceAction: pass gripper_width=grasp_close_width, the same width grasp.py closes
+  to and holds on the way home.
+
+Verified in sim: object carried to the pad instead of dropping at the start.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../src/mm_actions/mm_actions/actions/base_action.py   | 10 +++++++---
+ main_ws/src/mm_actions/mm_actions/actions/place.py     |  5 ++++-
+ .../mm_actions/mm_actions/actions/slow_base_action.py  |  6 ++++--
+ 3 files changed, 15 insertions(+), 6 deletions(-)
+
+diff --git a/main_ws/src/mm_actions/mm_actions/actions/base_action.py b/main_ws/src/mm_actions/mm_actions/actions/base_action.py
+index d3b4640..ec620c0 100644
+--- a/main_ws/src/mm_actions/mm_actions/actions/base_action.py
++++ b/main_ws/src/mm_actions/mm_actions/actions/base_action.py
+@@ -46,14 +46,17 @@ class BaseAction:
+         self._robot = rtb.models.Piper()
+         self._q_calc: Optional[np.ndarray] = None
+ 
+-    def move_arm_to_pose(self, target_pose, timeout_s=20.0):
++    def move_arm_to_pose(self, target_pose, timeout_s=20.0, gripper_width=None):
+         """
+         Servo the arm to a target pose.
+ 
+         Args:
+             target_pose: [x, y, z, qw, qx, qy, qz].
+-            gripper_width: Gripper width to command during motion.
+             timeout_s: Max time to attempt before aborting.
++            gripper_width: Gripper width to command during motion. None = re-send the
++                measured width (the old behaviour, fine while the gripper is open).
++                ⚠️ 手上有東西時一定要傳：量測寬度就是物體寬度，拿它當命令等於
++                「目標 = 現在位置」，夾爪不再出力，物體在移動中滑掉（place 一開始就掉）。
+ 
+         Returns:
+             (success: bool, message: str)
+@@ -113,7 +116,8 @@ class BaseAction:
+             # QP 不知道機身上有東西，可能繞任何方向過去。
+             self._q_calc[0] = float(np.clip(self._q_calc[0],
+                                             -self.J1_LIMIT_RAD, self.J1_LIMIT_RAD))
+-            self._publish_arm_cmd(self._q_calc.tolist(), self._get_joint_state()[-1])
++            grip = self._get_joint_state()[-1] if gripper_width is None else gripper_width
++            self._publish_arm_cmd(self._q_calc.tolist(), grip)
+             time.sleep(self.DT)
+ 
+         _obs.timeout(f"limit={timeout_s:.0f}s")
+diff --git a/main_ws/src/mm_actions/mm_actions/actions/place.py b/main_ws/src/mm_actions/mm_actions/actions/place.py
+index 1f1fe3a..c16cccf 100644
+--- a/main_ws/src/mm_actions/mm_actions/actions/place.py
++++ b/main_ws/src/mm_actions/mm_actions/actions/place.py
+@@ -96,7 +96,10 @@ class PlaceAction(BaseAction):
+             return False, "place aborted: IK failed for target point"
+         _obs_ik.ok()
+ 
+-        success, message = self.move_arm_to_pose(target_pose)
++        # 移動中鎖住抓取寬度（跟 grasp.py 回 HOME 時 hold grip_width 同一個道理）。
++        # 不傳的話 move_arm_to_pose 會一直送「量到的寬度」→ 夾力歸零 → 物體一開始就掉。
++        success, message = self.move_arm_to_pose(
++            target_pose, gripper_width=self._grasp_close_width)
+         if not success:
+             _obs_top.fail("ARM_SERVO_FAILED", f"message={message}")
+             return False, message
+diff --git a/main_ws/src/mm_actions/mm_actions/actions/slow_base_action.py b/main_ws/src/mm_actions/mm_actions/actions/slow_base_action.py
+index d5e5aac..cd85bdb 100644
+--- a/main_ws/src/mm_actions/mm_actions/actions/slow_base_action.py
++++ b/main_ws/src/mm_actions/mm_actions/actions/slow_base_action.py
+@@ -59,7 +59,7 @@ class SlowBaseAction(BaseAction):
+             self._publish_arm_cmd(q_cmd.tolist(), gripper_width)
+             time.sleep(self.DT)
+ 
+-    def move_arm_to_pose(self, target_pose, timeout_s=20.0):
++    def move_arm_to_pose(self, target_pose, timeout_s=20.0, gripper_width=None):
+         """Như BaseAction.move_arm_to_pose nhưng bước tích phân × SPEED_SCALE."""
+         t_start = time.time()
+         target_pose = np.asarray(target_pose, dtype=float)
+@@ -89,7 +89,9 @@ class SlowBaseAction(BaseAction):
+                 return False, "QP solver failed"
+ 
+             self._q_calc = q + qd * self.INTEGRATION_DT * self.SPEED_SCALE  # <-- CHẬM
+-            self._publish_arm_cmd(self._q_calc.tolist(), self._get_joint_state()[-1])
++            # 同 BaseAction.move_arm_to_pose：手上有東西時傳 gripper_width 鎖住寬度
++            grip = self._get_joint_state()[-1] if gripper_width is None else gripper_width
++            self._publish_arm_cmd(self._q_calc.tolist(), grip)
+             time.sleep(self.DT)
+ 
+         return False, "timeout"
+-- 
+2.43.0
+
