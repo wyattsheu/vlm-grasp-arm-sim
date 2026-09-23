@@ -160,7 +160,9 @@ def make_vlm_client():
         api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise SystemExit("VLM_BACKEND=gemini needs GOOGLE_API_KEY or GEMINI_API_KEY in the environment")
-        return backend, GeminiRoboticsClient(api_key=api_key)
+        # GEMINI_MODEL overrides the upstream default (gemini-robotics-er-2-preview) through the
+        # constructor argument the real client already exposes; unset keeps the real behaviour.
+        return backend, GeminiRoboticsClient(api_key=api_key, model=os.getenv("GEMINI_MODEL") or None)
     if backend == "local":
         from mm_actions.reasoning.local_pipeline_client import LocalPipelineClient
 
@@ -199,6 +201,8 @@ def main() -> int:
                              "(RUNBOOK sec 6). Default fits the 4 cm counter target.")
     parser.add_argument("--skip-observe", action="store_true",
                         help="do not move to OBSERVE first (the real flow runs ed305_arm_pose.py by hand)")
+    parser.add_argument("--vlm-retries", type=int, default=4,
+                        help="extra decide_task attempts when the VLM returns nothing (5 s, 10 s, ... backoff)")
     args = parser.parse_args()
 
     if not UPSTREAM.is_dir():
@@ -239,7 +243,19 @@ def main() -> int:
         report["vlm_backend"] = backend
         _obs_task = Stage("ARM_TASK", print).start(f'command="{args.instruction}"')
         _obs_vlm = Stage("VLM", print).start(f"backend={backend}")
-        decision = client.decide_task(image_rgb=image["rgb"], instruction=args.instruction)
+        # The real client swallows API errors (e.g. 503 "high demand" on the preview model) and
+        # returns None, same as "target not visible". Retry a few times with backoff so a
+        # transient overload doesn't fail the run; temperature is 0, so a genuine "not visible"
+        # just repeats and costs a few extra calls.
+        decision = None
+        for attempt in range(1, args.vlm_retries + 2):
+            decision = client.decide_task(image_rgb=image["rgb"], instruction=args.instruction)
+            if decision is not None or attempt > args.vlm_retries:
+                break
+            delay = 5 * attempt
+            print(f"[VLM] RETRY | attempt={attempt + 1}/{args.vlm_retries + 1} in {delay}s")
+            time.sleep(delay)
+        report["vlm_attempts"] = attempt
         save_vlm_debug(image["rgb"], decision, out_dir / "vlm_debug.png")
         if decision is None:
             _obs_vlm.fail("NO_DECISION", "API error or target not visible")

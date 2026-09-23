@@ -4,7 +4,8 @@
 #   bash tools/start_robot129_ros_webrtc.sh --scene pick_place_counter   # once
 #   bash tools/run_real_stack_task.sh "grasp the red block"
 #   VLM_BACKEND=local bash tools/run_real_stack_task.sh "..."            # real local pipeline
-# Extra args go to sim/scripts/sim_mm_actions_node.py (--grasp-close-width, --skip-observe).
+# Extra args go to sim/scripts/sim_mm_actions_node.py (--grasp-close-width, --skip-observe, --vlm-retries).
+#   GEMINI_MODEL=gemini-2.5-flash bash tools/run_real_stack_task.sh "..."   # if the default preview model is overloaded (503)
 #
 # Needs /mnt/HDD4/wyattsheu/env_robot129_realstack: a venv on top of env_robot129_ros with
 # the real stack's pinned deps (references/upstream/mm_system/main_ws/requirements.txt:
