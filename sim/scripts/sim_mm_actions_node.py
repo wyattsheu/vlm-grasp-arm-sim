@@ -152,6 +152,18 @@ def load_actions():
     return actions
 
 
+def upstream_revision():
+    """Which mm_system code ran: the sim imports whatever branch is checked out there
+    (e.g. a local fix not yet pushed), so every report says which one."""
+    import subprocess
+
+    def git(*a):
+        return subprocess.run(["git", "-C", str(UPSTREAM), *a], capture_output=True,
+                              text=True).stdout.strip()
+    return {"branch": git("branch", "--show-current"), "commit": git("rev-parse", "--short", "HEAD"),
+            "dirty": bool(git("status", "--porcelain", "--", "."))}
+
+
 def make_vlm_client():
     backend = os.getenv("VLM_BACKEND", "local").strip().lower()
     if backend == "gemini":
@@ -222,7 +234,8 @@ def main() -> int:
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     threading.Thread(target=executor.spin, daemon=True).start()
-    report = {"instruction": args.instruction, "grasp_close_width": args.grasp_close_width}
+    report = {"instruction": args.instruction, "grasp_close_width": args.grasp_close_width,
+              "mm_system": upstream_revision()}
     try:
         wait_for(lambda: node.get_joint_state() is not None, 15, "piper/joint_states_feedback (is the sim up?)")
         wait_for(lambda: node.get_image() is not None, 15, "synced RGB-D + camera_info")

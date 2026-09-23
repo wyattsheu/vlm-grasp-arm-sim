@@ -497,9 +497,27 @@ bash tools/stop_robot129_ros_webrtc.sh    # 關掉模擬器（釋放 GPU 與 por
 |---|---|---|
 | grasp | 全部 stage SUCCESS | ✅ 真的夾到：兩指各約 7 N、開口 3.95 cm，物體從檯面 (0.44, 0, 0.29) 帶回 (0.13, 0, 0.31)，重跑一次結果相同 |
 | grasp（本地 Qwen+Molmo2） | 全部 stage SUCCESS，VLM 1.06 s | ✅ 真的夾到：Molmo2 點在 (349, 190)，跟 Gemini 的 (346, 182) 差不到 10 px；物體帶回 (0.14, 0, 0.33)，抬高 3.6 cm。跑完兩個引擎自動關、GPU 用量回到原本 |
-| place | 全部 stage SUCCESS，`place complete` | ❌ 物體在 place 的 servo **一開始就掉到地上**，沒到綠墊 |
+| place（修正前） | 全部 stage SUCCESS，`place complete` | ❌ 物體在 place 的 servo **一開始就掉到地上**，沒到綠墊 |
+| place（修正後，`mm_system` 分支 `fix/place-hold-grip` b1c309d） | 全部 stage SUCCESS | ✅ 整段搬運都夾著、沒掉；⚠️ 但放下時**倒下**，躺在 (0.425, −0.087)，離綠墊中心 (0.44, −0.15) 約 6 cm |
 
-place 掉落的原因（有 log 佐證，不是猜的）：實機 `base_action.move_arm_to_pose()` 每一步 servo 都送 `gripper = self._get_joint_state()[-1]`，也就是**量到的**夾爪開口。模擬器夾爪是純位置控制，目標 = 目前開口 → 夾力歸零 → 物體滑出。實機會不會一樣掉，取決於 PiPER 夾爪不施力時是否靠機構摩擦撐住（不可反驅），`references/` 裡沒有資料，**需要實機確認**。模擬器目前**刻意沒有**替這件事加假設。
+**place 一開始就掉：原因與修正（2026-09-23，是實機程式的 bug，不是模擬器問題）**
+
+- 原因：`base_action.move_arm_to_pose()` 每一步 servo 都送 `gripper = self._get_joint_state()[-1]`，也就是**量到的**夾爪開口。手上有東西時，量到的開口就是物體寬度 → 夾爪目標 = 目前位置 → 夾力歸零 → 物體滑出。
+- 實機也會這樣：查了實機驅動 `nycu-acm/piper_ros`（commit 25c5d25，`piper_ctrl_single_node.py`），`joint_states_feedback` 的 gripper 是量測值（`GetArmGripperMsgs().gripper_state.grippers_angle`），收到命令後呼叫 `GripperCtrl(寬度, effort=1000, ...)`，是**位置命令＋力量上限**，所以實機一樣是「目標 = 現在位置、不出力」。
+- 修正（在 `references/upstream/mm_system` 本地分支 `fix/place-hold-grip`，**尚未 push**，要由維護者 push 到 nycu-acm/mm_system）：
+  - `BaseAction` / `SlowBaseAction.move_arm_to_pose()` 加回 docstring 本來就有寫、但參數被拿掉的 `gripper_width=None`；`None` 維持原本行為（夾爪張開時用，例如 grasp 的接近段）。
+  - `PlaceAction` 傳 `gripper_width=self._grasp_close_width`，也就是 grasp 閉合到、回 HOME 時一直鎖住的同一個寬度。
+- 模擬器執行的是 `references/upstream/mm_system` **目前 checkout 的分支**；每次的 `report.json` 會寫 `mm_system: {branch, commit, dirty}`，看得出這次跑的是哪一版。切回 `main` 就會重現舊的掉落行為。
+
+**放下時倒下（尚未處理）**：實機 `place.py` 把末端送到「綠墊表面 + `PLACE_HEIGHT_OFFSET_M = 0.07` m」後直接張開。方塊 8 cm 高、夾在上半段，底部離墊子還有幾公分，張開後掉下去就倒了，往 +y 倒半個身長（4 cm）剛好解釋偏移量。實機放品客罐應該有同樣問題，要不要改 offset 或改成「往下降到接觸再放」待決定。
+
+**抓取偵測（有沒有夾到）：原本的程式在哪裡**（使用者說過去有、被封印）
+
+- `mm_system/main_ws/src/mm_actions/mm_actions/arduino_bridge_node.py`：從 Arduino（`/dev/ttyACM0`、115200）讀 5 路 PDMS 觸覺感測電壓，發 `/force_sensor_topic`（`Float32MultiArray`）。
+- `mm_actions_node.py` 的 `is_holding_tightly()`：`use_force_grasp=true` 時看最後兩路電壓 ≥ 0.5 V；`false` 時只看「命令寬度 ≤ `grasp_close_width`」，**夾空也回 grasp complete**。
+- `adaptive_grasping_node.py`（另一個獨立版本，提供 `/grasp`、`/release` service）：一步 0.5 閉合，任一路電壓比開始時掉超過 2.0 V 就停。訂的是 `/joint_state_feedback`（少一個 s），跟驅動發的 `joint_states_feedback` 對不上，看起來沒被用過。
+- 被「封印」的方式：`start_mm_tmux.sh` / `run.sh` / `scripts/run_grasp.sh` 預設 `USE_FORCE_GRASP=false`，不啟動 `arduino_bridge_node`。原因是機器上目前沒裝感測器（GRASP_RUNBOOK §6）。
+- 沒有感測器也能用的訊號：驅動的 `joint_states_feedback` 本來就有 `effort[6]`（夾爪力，`grippers_effort/1000`）和量測開口 `position[6]`。夾到東西時，量測開口會停在物體寬度、比命令寬度大（模擬器實測：命令 3.2 cm、量到 3.95 cm）；夾空時兩者會一致。這可以當新的抓取偵測依據，**尚未實作**。模擬器的 `/robot129_sim/piper/joint_states_feedback` 目前只發 position，`effort` 還沒補（Isaac 可以從手指接觸力或關節力算出來）。
 
 同時重現了實機 DEVLOG 已知的問題：[ARM-01]「grasp complete 不代表夾到」、[ARM-09] IK 只約束位置、夾爪姿態自由。
 
