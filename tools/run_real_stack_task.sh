@@ -3,6 +3,8 @@
 # Usage:
 #   bash tools/start_robot129_ros_webrtc.sh --scene pick_place_counter   # once
 #   bash tools/run_real_stack_task.sh "grasp the red block"
+#   bash tools/reset_robot129_scene.sh                                 # put block + arm back
+#   bash tools/stop_robot129_ros_webrtc.sh                             # shut the sim down
 #   VLM_BACKEND=local bash tools/run_real_stack_task.sh "..."            # real local pipeline
 # Extra args go to sim/scripts/sim_mm_actions_node.py (--grasp-close-width, --skip-observe, --vlm-retries).
 #   GEMINI_MODEL=gemini-2.5-flash bash tools/run_real_stack_task.sh "..."   # if the default preview model is overloaded (503)
