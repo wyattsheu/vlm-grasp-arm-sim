@@ -516,6 +516,7 @@ bash tools/stop_robot129_ros_webrtc.sh    # 關掉模擬器（釋放 GPU 與 por
 - `mm_system/main_ws/src/mm_actions/mm_actions/arduino_bridge_node.py`：從 Arduino（`/dev/ttyACM0`、115200）讀 5 路 PDMS 觸覺感測電壓，發 `/force_sensor_topic`（`Float32MultiArray`）。
 - `mm_actions_node.py` 的 `is_holding_tightly()`：`use_force_grasp=true` 時看最後兩路電壓 ≥ 0.5 V；`false` 時只看「命令寬度 ≤ `grasp_close_width`」，**夾空也回 grasp complete**。
 - `adaptive_grasping_node.py`（另一個獨立版本，提供 `/grasp`、`/release` service）：一步 0.5 閉合，任一路電壓比開始時掉超過 2.0 V 就停。訂的是 `/joint_state_feedback`（少一個 s），跟驅動發的 `joint_states_feedback` 對不上，看起來沒被用過。
+- `main_ws/src/adaptive_grasping.py`（`gripper_force_test` node）：單獨測力覺用的小腳本，先記錄無接觸時的電壓 baseline，再一邊閉合一邊看最後兩路 ≥ 0.5 V；註解掉的另一種判斷是「比 baseline 多 0.5 V」。`mm_actions_node` 的判斷就是從這裡搬過去的。
 - 被「封印」的方式：`start_mm_tmux.sh` / `run.sh` / `scripts/run_grasp.sh` 預設 `USE_FORCE_GRASP=false`，不啟動 `arduino_bridge_node`。原因是機器上目前沒裝感測器（GRASP_RUNBOOK §6）。
 - 沒有感測器也能用的訊號：驅動的 `joint_states_feedback` 本來就有 `effort[6]`（夾爪力，`grippers_effort/1000`）和量測開口 `position[6]`。夾到東西時，量測開口會停在物體寬度、比命令寬度大（模擬器實測：命令 3.2 cm、量到 3.95 cm）；夾空時兩者會一致。這可以當新的抓取偵測依據，**尚未實作**。模擬器的 `/robot129_sim/piper/joint_states_feedback` 目前只發 position，`effort` 還沒補（Isaac 可以從手指接觸力或關節力算出來）。
 
