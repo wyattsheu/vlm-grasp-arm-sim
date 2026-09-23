@@ -424,6 +424,54 @@ ros2 service call /robot129_sim/capture_scene_manifest std_srvs/srv/Trigger "{}"
 | `SCENE_MANIFEST skipping <id>: unknown kind` | `kind` 拼錯，只接受 `primitive_box` / `usd_asset` |
 | `dynamic` 物體一開始就飛走 | `z_m` 太低、插進地板或跟別的物體重疊，調高 `z_m` |
 
+2026-09-23 修正：manifest 物體過去一律**上下顛倒**生成（`InitialStateCfg.rot` 在這版 IsaacLab 是 `(x,y,z,w)`，舊的 helper 給的是 `(w,x,y,z)`，yaw=0 變成繞 X 轉 180°）。方塊看不出來，YCB 馬克杯是倒著的；已修，capture 讀回的 yaw 也一起改對。
+
+### 5.4 實機架構場景：`pick_place_counter` + 真實 `mm_actions` 程式（2026-09-23）
+
+目標：抓取方式完全照 `references/upstream`（實機程式）走，之後移植到實機時是**同一份程式碼**，不是「模擬版另寫一套」。
+
+#### 5.4.1 手臂型號與模型
+
+- 手臂是 **AgileX（松靈）PiPER**。NVIDIA 官方資產庫（Isaac 4.5–6.1，逐一掃過約 2.6 萬個檔案）**沒有 PiPER**，只有同廠的 LIMO 底盤；IsaacLab 也沒有 PiPER 設定。
+- 我們現在用的 `sim/assets/robot129/robot129/robot129.usda` 本來就是 AgileX 官方 `piper_description` URDF + STL（MIT）用 Isaac 自己的 URDF importer 轉的（`sim/assets/robot129/import_report.json`），不是自己建的模型，不需要換。
+- 實機用的 kinematics 是實驗室 fork 的 `roboticstoolbox`（`Tsaimingchun14/robotics-toolbox-python@8d8c0c3`，`models/URDF/Piper.py`），關節 origin 跟我們的 URDF 完全相同；在 OBSERVE 姿態兩邊 FK 都是 `(0.143, 0, 0.289)`。
+
+#### 5.4.2 相機：過去的模擬相機方向是錯的
+
+- URDF 的 `camera_mount` 讓光軸 = `gripper_base +X`，**跟夾取方向（+Z）垂直**。以前「看起來朝正下方」只是因為 HOME 姿態的夾爪剛好水平朝前。程式裡原本說「相機跟夾爪同軸」的註解是錯的，已更正。
+- 實機的手眼校正在 `references/upstream/.../actions/base_action.py` 的 `ee_T_cam`（EE = `piper_gripper_base + 0.12 m`）：相機在 `gripper_base` 座標 `(-0.071, 0.024, 0.023)`，**光軸幾乎就是夾取方向**（差約 2°，另有約 7° roll，所以畫面地平線微斜是真的）。
+- 新旗標 `--wrist-camera-model auto|urdf_nominal|real_calib`：`real_calib` 用實機校正 + D435 類內參（640×480、fx=fy=615）。`auto` = 只有 `pick_place_counter` 用 `real_calib`，舊場景維持 `urdf_nominal`，已驗證過的舊工具畫面不變。
+
+#### 5.4.3 為什麼要墊高物
+
+相機改成朝夾取方向後，在實機的觀察姿態 `OBSERVE = [0, 0.2, -0.6, 0, 0.8, 0]`（`ed305_arm_pose.py`，也是 `grasp.py` 夾完回去的姿態）只往下看 19°、高度 0.386 m，看不到地板。所以 `pick_place_counter` 在手臂前面放一個 **25 cm 高的檯面**（x 0.30–0.62 m、寬 0.60 m），目標物跟綠色放置墊都放在檯面上。數字在 `research/configs/scene_geometry.json` 的 `counter`；目標改成直立的 4×4×8 cm 方柱（實機 `grasp.py` 假設物體約 6 cm 厚，3.5 cm 小方塊太薄）。這個場景的 HOME 就是 OBSERVE。
+
+#### 5.4.4 怎麼跑
+
+```bash
+bash tools/start_robot129_ros_webrtc.sh --scene pick_place_counter
+bash tools/run_real_stack_task.sh "grasp the red block on the table"
+bash tools/run_real_stack_task.sh "place the block on the green pad" --skip-observe
+# VLM_BACKEND=local 走實機的本地 pipeline（需要 localhost:8000 / 8002 的 vLLM）
+# 重置：ros2 service call /robot129_sim/reset_scene std_srvs/srv/Trigger '{}'
+```
+
+- `sim/scripts/sim_mm_actions_node.py` 只重寫實機 `mm_actions_node.py` 的 ROS 外殼（實機版需要實驗室專用的 `mm_interface` 跟 `cv_bridge`），**grasp/place/Gemini client/IK/servo 全部 import 自 `references/upstream`，一行都沒改、也沒複製進 repo**（`references/` 本來就不進 git）。
+- 模擬器新增實機 driver 同樣介面：`/robot129_sim/piper/joint_cmd`（JointState，joint1–6 + `gripper` 開口 0–0.1 m，串流位置命令）、`/robot129_sim/piper/joint_states_feedback`。深度從 32FC1 公尺轉成 RealSense 的 16UC1 毫米再交給實機程式。
+- 需要 venv `/mnt/HDD4/wyattsheu/env_robot129_realstack`（疊在 `env_robot129_ros` 上，裝實機 `requirements.txt` 的 pinned 版本：rtb fork、numpy 1.26.4、qpsolvers、quadprog、google-genai、rerun-sdk）。
+- 每次輸出在 `out/grasp_motion/real_stack/<時間>/`：`vlm_input.png`、`vlm_debug.png`（VLM 點的位置）、`rerun.rrd`（實機程式本來就會 log 的 rerun 資料）、`report.json`（含模擬器的物體位置前後，**這是唯一能確認有沒有真的夾到的依據**）。
+
+#### 5.4.5 實測結果（2026-09-23，Gemini robotics-er-2）
+
+| 動作 | 實機程式回報 | 模擬器真值 |
+|---|---|---|
+| grasp | 全部 stage SUCCESS | ✅ 真的夾到：兩指各約 7 N、開口 3.95 cm，物體從檯面 (0.44, 0, 0.29) 帶回 (0.13, 0, 0.31)，重跑一次結果相同 |
+| place | 全部 stage SUCCESS，`place complete` | ❌ 物體在 place 的 servo **一開始就掉到地上**，沒到綠墊 |
+
+place 掉落的原因（有 log 佐證，不是猜的）：實機 `base_action.move_arm_to_pose()` 每一步 servo 都送 `gripper = self._get_joint_state()[-1]`，也就是**量到的**夾爪開口。模擬器夾爪是純位置控制，目標 = 目前開口 → 夾力歸零 → 物體滑出。實機會不會一樣掉，取決於 PiPER 夾爪不施力時是否靠機構摩擦撐住（不可反驅），`references/` 裡沒有資料，**需要實機確認**。模擬器目前**刻意沒有**替這件事加假設。
+
+同時重現了實機 DEVLOG 已知的問題：[ARM-01]「grasp complete 不代表夾到」、[ARM-09] IK 只約束位置、夾爪姿態自由。
+
 ---
 
 ## 6. 下一步：這三項要怎麼排序？

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Usage: start_robot129_ros_webrtc.sh [--scene marker|pick_place|pick_place_hammer]
+# Usage: start_robot129_ros_webrtc.sh [--scene marker|pick_place|pick_place_hammer|pick_place_counter]
+#        [--scene-manifest <json>] [--wrist-camera-model auto|urdf_nominal|real_calib]
 # Defaults to marker (sim/scripts/run_robot129_ros_webrtc.py's own default) if omitted.
 #
 # Bug fixed 2026-09-20: this script used to take no arguments at all and silently
@@ -20,10 +21,12 @@ mkdir -p "$state"
 
 scene="marker"
 scene_manifest=""
+wrist_camera_model="auto"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --scene) scene="$2"; shift 2 ;;
     --scene-manifest) scene_manifest="$2"; shift 2 ;;
+    --wrist-camera-model) wrist_camera_model="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -57,7 +60,7 @@ export LD_PRELOAD="$isaac/.venv/lib/python3.12/site-packages/nvidia/cuda_runtime
 cd "$isaac"
 nohup setsid uv run --no-sync python "$root/sim/scripts/run_robot129_ros_webrtc.py" \
   --bundle "$root" --device cuda:0 --livestream 2 --warmup-frames 90 --scene "$scene" \
-  ${scene_manifest:+--scene-manifest "$scene_manifest"} \
+  ${scene_manifest:+--scene-manifest "$scene_manifest"} --wrist-camera-model "$wrist_camera_model" \
   --kit_args "--/app/window/width=1280 --/app/window/height=720 --/exts/omni.kit.livestream.app/primaryStream/targetFps=30 --/exts/omni.kit.livestream.app/primaryStream/publicIp=$public_ip --/exts/omni.kit.livestream.app/primaryStream/allowDynamicResize=false --/rtx/hydra/readTransformsFromFabricInRenderDelegate=0 --/renderer/multiGpu/enabled=false" \
   > "$state/server.log" 2>&1 &
 pid=$!

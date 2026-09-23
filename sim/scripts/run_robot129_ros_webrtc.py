@@ -44,11 +44,23 @@ parser = argparse.ArgumentParser(description="Run Robot 129 under isolated ROS 2
 parser.add_argument("--bundle", type=Path, required=True)
 parser.add_argument("--warmup-frames", type=int, default=90)
 parser.add_argument(
-    "--scene", choices=["marker", "pick_place", "pick_place_hammer"], default="marker",
+    "--scene", choices=["marker", "pick_place", "pick_place_hammer", "pick_place_counter"], default="marker",
     help="marker (default, unchanged original behaviour), pick_place (dynamic cube + "
-         "contacts), or pick_place_hammer (S5 pilot object: same pick_place wiring, but "
+         "contacts), pick_place_hammer (S5 pilot object: same pick_place wiring, but "
          "the graspable body is an elongated handle-shaped box, with a second purely "
-         "kinematic 'head' box riding along for a two-part shape a real camera can see).",
+         "kinematic 'head' box riding along for a two-part shape a real camera can see), or "
+         "pick_place_counter (real-robot layout: raised pedestal with a can-like target and "
+         "place pad on top, HOME = the real robot's observe pose; meant to be driven by "
+         "tools/run_real_stack_task.sh, which runs the unmodified real mm_actions grasp/place code).",
+)
+parser.add_argument(
+    "--wrist-camera-model", choices=["auto", "urdf_nominal", "real_calib"], default="auto",
+    help="urdf_nominal: the URDF's camera_mount (looks along gripper_base +X, perpendicular to "
+         "the grasp direction) with the old 41x31 deg nominal lens. real_calib: the real robot's "
+         "hand-eye calibration (ee_T_cam in references/upstream/.../actions/base_action.py; looks "
+         "along the grasp direction) with D435-like 640x480 fx=fy=615 intrinsics. auto (default): "
+         "real_calib for pick_place_counter, urdf_nominal for every older scene so the tools "
+         "validated against them keep their view.",
 )
 parser.add_argument(
     "--scene-manifest", default="",
@@ -124,11 +136,11 @@ WRIST_OPTICAL_PARENT = (
 )
 WRIST_CAMERA_PRIM = WRIST_OPTICAL_PARENT + "/sensor"
 WRIST_FRAME = "camera_color_optical_frame"
-# ros2_ws/src/robot129_description/config/nominal_frames.yaml's camera_mount_rpy_rad
-# (baked into the imported USD this prim chain lives in) is [0,0,0] -- the sim camera
-# was, until this constant existed, aligned exactly with the gripper's own reach axis
-# (gripper_to_tcp is along local +Z), i.e. looking straight down the approach direction
-# at HOME. Real Robot 129 photos supplied by the user 2026-09-21 show the physical
+# --wrist-camera-model urdf_nominal only (real_calib ignores this; see wrist_camera_offset()).
+# CORRECTION 2026-09-23: this comment used to claim the URDF camera is coaxial with the
+# gripper's reach axis. It is not: camera_link +X (the optical axis) = gripper_base +X,
+# perpendicular to the grasp direction (+Z). It only looked "straight down" because the
+# gripper points horizontally forward at HOME. Real Robot 129 photos supplied by the user 2026-09-21 show the physical
 # camera mounted at a real angle off that axis, not coaxial with it -- that file already
 # carries an explicit SIMULATION_NOMINAL_UNVERIFIED_ON_HARDWARE warning for exactly this.
 # Re-importing the URDF (tools/import_robot129_usd.sh) to fix camera_mount_rpy_rad
@@ -176,6 +188,35 @@ CUBE_REST_Z = _geometry["cube"]["rest_z_m"]  # cube half-size; resting height on
 CUBE_MASS_KG = _geometry["cube"]["mass_kg"]
 PLACE_XY_DEFAULT = tuple(_geometry["place"]["xy_default_m"])
 SETTLE_STEPS = 90
+
+COUNTER_SCENE = args.scene == "pick_place_counter"
+TABLE_Z = 0.0
+TARGET_SIZE_XYZ = (CUBE_SIZE_M, CUBE_SIZE_M, CUBE_SIZE_M)
+if COUNTER_SCENE:
+    _counter = _geometry["counter"]
+    PEDESTAL_CENTER_XY = tuple(_counter["pedestal_center_xy_m"])
+    PEDESTAL_SIZE_M = tuple(_counter["pedestal_size_m"])
+    TABLE_Z = PEDESTAL_SIZE_M[2]
+    TARGET_SIZE_XYZ = tuple(_counter["target_size_m"])
+    CUBE_XY_DEFAULT = tuple(_counter["target_xy_default_m"])
+    PLACE_XY_DEFAULT = tuple(_counter["place_xy_default_m"])
+    CUBE_DROP_Z = TABLE_Z + TARGET_SIZE_XYZ[2] / 2.0 + 0.005
+    HOME = np.array(list(_counter["observe_joints_rad"]) + [0.035, -0.035], dtype=np.float64)
+
+WRIST_CAMERA_MODEL = args.wrist_camera_model
+if WRIST_CAMERA_MODEL == "auto":
+    WRIST_CAMERA_MODEL = "real_calib" if COUNTER_SCENE else "urdf_nominal"
+# Real robot hand-eye calibration, verbatim from references/upstream/mm_system/main_ws/src/
+# mm_actions/mm_actions/actions/base_action.py convert_camera_to_base(): camera optical frame
+# expressed in the rtb Piper end-effector frame, which is piper_gripper_base + (0, 0, 0.12)
+# (Tsaimingchun14/robotics-toolbox-python@8d8c0c3 models/URDF/Piper.py, grippers[0].tool).
+REAL_EE_T_CAM = np.array([
+    [0.12045728, 0.99241666, 0.02447911, -0.07102005],
+    [-0.99265611, 0.12068956, -0.0082389, 0.02413094],
+    [-0.0111308, -0.0233069, 0.99966639, -0.09727718],
+    [0.0, 0.0, 0.0, 1.0],
+])
+REAL_EE_TOOL_Z_M = 0.12
 
 # S5 pilot object (docs/progress/grasp_motion_progress_report.md "S5" section): a
 # two-part hammer, realized here as two REAL prims so a live camera can actually see
@@ -294,6 +335,38 @@ def yaw_to_quat_xyzw(yaw: float):
     return (0.0, 0.0, math.sin(yaw / 2.0), math.cos(yaw / 2.0))
 
 
+def _rpy_matrix(r: float, p: float, y: float) -> np.ndarray:
+    cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
+    return (np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+            @ np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+            @ np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]]))
+
+
+def _matrix_to_quat_xyzw(m: np.ndarray):
+    w = math.sqrt(max(0.0, 1.0 + m[0, 0] + m[1, 1] + m[2, 2])) / 2.0
+    x = math.copysign(math.sqrt(max(0.0, 1.0 + m[0, 0] - m[1, 1] - m[2, 2])) / 2.0, m[2, 1] - m[1, 2])
+    y = math.copysign(math.sqrt(max(0.0, 1.0 - m[0, 0] + m[1, 1] - m[2, 2])) / 2.0, m[0, 2] - m[2, 0])
+    z = math.copysign(math.sqrt(max(0.0, 1.0 - m[0, 0] - m[1, 1] + m[2, 2])) / 2.0, m[1, 0] - m[0, 1])
+    return (x, y, z, w)
+
+
+def wrist_camera_offset():
+    """(pos, rot_xyzw) of the camera sensor relative to its parent prim, the URDF's
+    camera_color_optical_frame (gripper_base -> camera_mount xyz 0.055 0 0.075 -> optical
+    rpy -pi/2 0 -pi/2; see robot129.urdf). With convention="ros" an identity offset means
+    "the sensor's optical axes are the parent's optical axes"."""
+    if WRIST_CAMERA_MODEL == "urdf_nominal":
+        half = math.radians(WRIST_CAMERA_PITCH_CORRECTION_DEG) / 2.0
+        return (0.0, 0.0, 0.0), (math.sin(half), 0.0, 0.0, math.cos(half))
+    gb_T_parent = np.eye(4)
+    gb_T_parent[:3, :3] = _rpy_matrix(-math.pi / 2, 0.0, -math.pi / 2)
+    gb_T_parent[:3, 3] = (0.055, 0.0, 0.075)
+    gb_T_ee = np.eye(4)
+    gb_T_ee[2, 3] = REAL_EE_TOOL_Z_M
+    parent_T_cam = np.linalg.inv(gb_T_parent) @ gb_T_ee @ REAL_EE_T_CAM
+    return tuple(float(v) for v in parent_T_cam[:3, 3]), _matrix_to_quat_xyzw(parent_T_cam[:3, :3])
+
+
 def spawn_clutter_from_manifest(manifest_path: str) -> list:
     """--scene-manifest support (see the arg's help text and docs/dev_guide_
     paper_core_and_dashboard_plan.md §5): spawn each listed object as a
@@ -390,7 +463,8 @@ def spawn_clutter_from_manifest(manifest_path: str) -> list:
             RigidObjectCfg(
                 prim_path=prim_path, spawn=spawn_cfg,
                 init_state=RigidObjectCfg.InitialStateCfg(
-                    pos=(xy[0], xy[1], z), rot=yaw_to_quat_xyzw_wxyz(yaw),
+                    # InitialStateCfg.rot is (x, y, z, w) in this IsaacLab version.
+                    pos=(xy[0], xy[1], z), rot=yaw_to_quat_xyzw(yaw),
                 ),
             )
         )
@@ -414,22 +488,13 @@ def quat_wxyz_to_yaw(w: float, x: float, y: float, z: float) -> float:
     return math.atan2(siny_cosp, cosy_cosp)
 
 
-def yaw_to_quat_xyzw_wxyz(yaw: float):
-    """RigidObjectCfg.InitialStateCfg.rot wants (w, x, y, z), unlike the
-    ROS-facing yaw_to_quat_xyzw() above which returns (x, y, z, w) -- kept as
-    a separate small helper rather than a shared one to avoid silently
-    reordering the ROS-facing convention everything else in this file uses."""
-    half = yaw / 2.0
-    return (math.cos(half), 0.0, 0.0, math.sin(half))
-
-
 def main() -> int:
     if int(os.environ.get("ROS_DOMAIN_ID", "-1")) != 129:
         print("[ROBOT129 ROS WEBRTC] FAIL - ROS_DOMAIN_ID must be 129", flush=True)
         return 2
 
     root = args.bundle.resolve()
-    pick_place = args.scene in ("pick_place", "pick_place_hammer")
+    pick_place = args.scene in ("pick_place", "pick_place_hammer", "pick_place_counter")
     hammer_mode = args.scene == "pick_place_hammer"
     settings = carb.settings.get_settings()
     settings.set("/rtx/background/source/type", 2)
@@ -460,7 +525,19 @@ def main() -> int:
         # Unlike sim/scripts/verify_robot129_physics_grasp.py this spawns ON the floor and
         # is never made kinematic or gravity-disabled: "picked up" here means real PhysX
         # contact lift, not a floating pre-placed prop.
-        cube_size_xyz = HAMMER_HANDLE_SIZE_M if hammer_mode else (CUBE_SIZE_M, CUBE_SIZE_M, CUBE_SIZE_M)
+        if COUNTER_SCENE:
+            # Static collider only (like the floor), not a rigid body: the real counter
+            # never moves, and nothing here needs its pose.
+            pedestal = sim_utils.CuboidCfg(
+                size=PEDESTAL_SIZE_M,
+                collision_props=sim_utils.CollisionPropertiesCfg(),
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.62, 0.55, 0.45), roughness=0.8),
+            )
+            pedestal.func(
+                "/World/Pedestal", pedestal,
+                translation=(PEDESTAL_CENTER_XY[0], PEDESTAL_CENTER_XY[1], TABLE_Z / 2.0),
+            )
+        cube_size_xyz = HAMMER_HANDLE_SIZE_M if hammer_mode else TARGET_SIZE_XYZ
         cube_color = (0.55, 0.35, 0.12) if hammer_mode else (0.88, 0.08, 0.04)  # brown handle vs red cube
         cube = RigidObject(
             RigidObjectCfg(
@@ -508,7 +585,7 @@ def main() -> int:
         )
         place_marker.func(
             "/World/PlaceZoneMarker", place_marker,
-            translation=(PLACE_XY_DEFAULT[0], PLACE_XY_DEFAULT[1], 0.001),
+            translation=(PLACE_XY_DEFAULT[0], PLACE_XY_DEFAULT[1], TABLE_Z + 0.001),
         )
         if args.scene_manifest:
             clutter_objects = spawn_clutter_from_manifest(args.scene_manifest)
@@ -558,19 +635,14 @@ def main() -> int:
             data_types=["rgb", "distance_to_image_plane"],
             update_latest_camera_pose=True,
             offset=CameraCfg.OffsetCfg(
-                pos=(0.0, 0.0, 0.0),
-                # Rotation about the camera's own local X ("right") axis -- pitches
-                # the optical forward axis away from the gripper's reach direction.
-                # (x, y, z, w) -- CameraCfg.OffsetCfg.rot's documented order (NOT w,x,y,z).
-                rot=(
-                    math.sin(math.radians(WRIST_CAMERA_PITCH_CORRECTION_DEG) / 2.0),
-                    0.0, 0.0,
-                    math.cos(math.radians(WRIST_CAMERA_PITCH_CORRECTION_DEG) / 2.0),
-                ),
+                pos=wrist_camera_offset()[0],
+                rot=wrist_camera_offset()[1],  # (x, y, z, w)
                 convention="ros",
             ),
             spawn=sim_utils.PinholeCameraCfg(
-                focal_length=28.0,
+                # real_calib: fx = fy = 615 px at 640x480 (D435 color, nominal -- the real
+                # node reads the live camera_info, so only the FOV matters for the sim).
+                focal_length=28.0 if WRIST_CAMERA_MODEL == "urdf_nominal" else 615.0 * 20.955 / 640.0,
                 horizontal_aperture=20.955,
                 clipping_range=(0.05, 5.0),
             ),
@@ -602,7 +674,7 @@ def main() -> int:
     if overview_camera is not None:
         overview_camera.set_world_poses_from_view(
             eyes=torch.tensor([[1.05, 0.95, 0.85]], device=sim.device),
-            targets=torch.tensor([[0.30, -0.05, 0.05]], device=sim.device),
+            targets=torch.tensor([[0.30, -0.05, 0.05 + TABLE_Z]], device=sim.device),
         )
     home_tensor = torch.tensor(HOME, dtype=torch.float32, device=sim.device).unsqueeze(0)
     robot.write_joint_position_to_sim_index(position=home_tensor)
@@ -688,6 +760,10 @@ def main() -> int:
     executor = SingleThreadedExecutor()
     executor.add_node(node)
     state_pub = node.create_publisher(JointState, "/robot129_sim/joint_states", 10)
+    # Real PiPER driver interface (piper_ros, as used by references/upstream mm_actions):
+    # feedback = joints 1-6 + "gripper" total opening in metres; the sim's two fingers each
+    # travel 0-0.035 m, so opening = 2 * joint7 (0-0.07 m; the real gripper reaches 0.1).
+    piper_feedback_pub = node.create_publisher(JointState, "/robot129_sim/piper/joint_states_feedback", 10)
     command_pub = node.create_publisher(JointState, "/robot129_sim/joint_command", 10)
     events_pub = node.create_publisher(String, "/robot129_sim/trajectory_events", 10)
     latched_qos = QoSProfile(
@@ -991,7 +1067,25 @@ def main() -> int:
 
         return callback
 
+    def handle_piper_joint_cmd(msg):
+        # Streaming position command, same shape the real driver consumes: the real
+        # mm_actions servo loop publishes one JointState per 25 ms and expects the arm to
+        # track it directly, so there is no trajectory interpolation here. A streamed
+        # command supersedes any active JointTrajectory plan.
+        positions = dict(zip(msg.name, msg.position))
+        missing = [n for n in ARM_NAMES if n not in positions]
+        values = [positions.get(n, 0.0) for n in ARM_NAMES]
+        if missing or not np.all(np.isfinite(values)):
+            print(f"[ROBOT129 ROS WEBRTC] REJECT piper_cmd - missing={missing} or non-finite", flush=True)
+            return
+        for key in plans:
+            plans[key] = None
+        target[:6] = np.clip(values, LIMITS[:6, 0], LIMITS[:6, 1])
+        if "gripper" in positions and math.isfinite(positions["gripper"]):
+            target[6] = float(np.clip(positions["gripper"] / 2.0, LIMITS[6, 0], LIMITS[6, 1]))
+
     subscriptions = [
+        node.create_subscription(JointState, "/robot129_sim/piper/joint_cmd", handle_piper_joint_cmd, 10),
         node.create_subscription(
             JointTrajectory,
             "/robot129_sim/arm_controller/joint_trajectory",
@@ -1204,10 +1298,10 @@ def main() -> int:
                 # never updates clutter objects, so without this it returns a stale pose.
                 rigid_obj.update(sim.get_physics_dt())
                 pos = rigid_obj.data.root_pos_w.torch[0].detach().cpu().numpy()
-                quat = rigid_obj.data.root_quat_w.torch[0].detach().cpu().numpy()  # (w, x, y, z)
+                qx, qy, qz, qw = (float(v) for v in rigid_obj.data.root_quat_w.torch[0].detach().cpu().numpy())
                 entry["xy_m"] = [float(pos[0]), float(pos[1])]
                 entry["z_m"] = float(pos[2])
-                entry["yaw_rad"] = quat_wxyz_to_yaw(*(float(v) for v in quat))
+                entry["yaw_rad"] = quat_wxyz_to_yaw(qw, qx, qy, qz)
                 entry["size_m"] = rec["size_m"]
                 entry["color_rgb"] = rec["color_rgb"]
             elif rec["kind"] == "usd_asset":
@@ -1285,6 +1379,11 @@ def main() -> int:
             state.position = robot.data.joint_pos.torch[0].detach().cpu().tolist()
             state.velocity = robot.data.joint_vel.torch[0].detach().cpu().tolist()
             state_pub.publish(state)
+            piper_fb = JointState()
+            piper_fb.header.stamp = stamp
+            piper_fb.name = ARM_NAMES + ["gripper"]
+            piper_fb.position = list(state.position[:6]) + [2.0 * state.position[6]]
+            piper_feedback_pub.publish(piper_fb)
             counters["published_states"] += 1
 
             command_state = JointState()
