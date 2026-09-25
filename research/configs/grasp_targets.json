@@ -1,0 +1,40 @@
+{
+  "schema_version": "grasp_targets_v1",
+  "_provenance": "For --scene pick_place --target-object <id> (sim/scripts/run_robot129_ros_webrtc.py) and tools/generate_s2_cube_candidates.py's generalized candidate generator (docs/dev_guide_paper_core_and_dashboard_plan.md §8 'grasp' scenario). All these shapes are AUTHORED simulation objects, not measurements of a real physical prop -- same status as the existing cube/hammer numbers in scene_geometry.json, not a AGENTS.md 'never guess hardware' case. mass_kg for every entry is size scaled from the original cube's own mass_kg=0.08 at size_m=0.035 in scene_geometry.json, at a constant assumed density of ~1866 kg/m^3 (0.08 / 0.035^3) -- i.e. not independently guessed per object, just carried through consistently so heavier/lighter feels physically plausible relative to the one real reference point. All sizes fit within the gripper's ~0.07m max opening (2 x joint7's 0.035m range) with margin, per the plan's own constraint.",
+  "targets": {
+    "cube_35": {
+      "shape": "box",
+      "size_m": [0.035, 0.035, 0.035],
+      "color_rgb": [0.88, 0.08, 0.04],
+      "mass_kg": 0.08,
+      "note": "unchanged original pick_place target -- --target-object cube_35 (the default) must spawn byte-for-byte the same object as before this option existed."
+    },
+    "tall_block": {
+      "shape": "box",
+      "size_m": [0.04, 0.04, 0.08],
+      "color_rgb": [0.15, 0.45, 0.85],
+      "mass_kg": 0.24
+    },
+    "can": {
+      "shape": "cylinder",
+      "radius_m": 0.025,
+      "height_m": 0.09,
+      "color_rgb": [0.80, 0.75, 0.15],
+      "mass_kg": 0.33
+    },
+    "flat_box": {
+      "shape": "box",
+      "size_m": [0.06, 0.03, 0.025],
+      "color_rgb": [0.55, 0.20, 0.65],
+      "mass_kg": 0.08,
+      "note": "flat/asymmetric -- see research/src/mpg/curobo_bridge/frames.py 'KNOWN MISMATCH' docstring before claiming a grasp of this one is a narrow-side grasp; verify against the real closing axis (local Y), not the scored one (local X)."
+    },
+    "ball": {
+      "shape": "sphere",
+      "radius_m": 0.025,
+      "color_rgb": [0.10, 0.75, 0.45],
+      "mass_kg": 0.12,
+      "note": "stretch target per the plan -- a sphere has no stable top-down parallel-jaw grasp orientation the way a box/cylinder does; existing grasp_candidates.py's top-down generator was written for box/cylinder profiles and has not been validated against a sphere. Expect this one to need extra work, not a guaranteed drop-in."
+    }
+  }
+}

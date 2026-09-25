@@ -1,0 +1,30 @@
+# Five editable 6D pinch-center poses for the existing cuRobo MPC waypoint demo.
+# position_m is in world coordinates; quaternion_xyzw is the gripper orientation.
+# These example poses come from URDF FK of nearby, valid joint configurations.
+# Replace the five position/quaternion pairs to test your own reachable targets.
+waypoints:
+  - name: P1_start
+    position_m: [0.3950, 0.0000, 0.4534]
+    quaternion_xyzw: [0.00000, 0.71162, -0.00001, 0.70257]
+    hold_s: 1.0
+    timeout_s: 25.0
+  - name: P2
+    position_m: [0.3827, 0.0977, 0.4534]
+    quaternion_xyzw: [-0.08872, 0.70606, 0.08759, 0.69709]
+    hold_s: 1.0
+    timeout_s: 25.0
+  - name: P3
+    position_m: [0.4281, -0.1027, 0.4145]
+    quaternion_xyzw: [0.15571, 0.72838, -0.00636, 0.66721]
+    hold_s: 1.0
+    timeout_s: 25.0
+  - name: P4
+    position_m: [0.4175, 0.0291, 0.4506]
+    quaternion_xyzw: [-0.01432, 0.74376, 0.01447, 0.66814]
+    hold_s: 1.0
+    timeout_s: 25.0
+  - name: P5_end
+    position_m: [0.3890, 0.0000, 0.5069]
+    quaternion_xyzw: [-0.07711, 0.61365, -0.09798, 0.77968]
+    hold_s: 1.0
+    timeout_s: 25.0

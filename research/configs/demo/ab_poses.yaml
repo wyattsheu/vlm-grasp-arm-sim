@@ -1,0 +1,25 @@
+schema_version: demo_ab_poses_v1
+generated_by: authored_from_urdf_fk_for_stable_demo
+generated_at: 2026-09-24T16:40:00+0800
+robot_config: research/configs/curobo/robot129.yml
+# A/B are nearby configurations on opposite sides of the obstacle. Keeping the
+# shoulder/elbow/wrist values fixed makes this an obstacle test; arbitrary 6D branch
+# changes are covered separately by pose5.
+points:
+  A:
+    name: A
+    position_m: [0.0540099572, 0.4449206591, 0.4840699409]
+    quaternion_xyzw: [-0.4601026166, 0.5193342243, 0.4775447373, 0.5390255741]
+    joint_values_rad: [1.45, 1.4, -1.5, 0.0, 0.15, 0.0]
+    position_error_m: 0.0
+    rotation_error_rad: 0.0
+    urdf_fk_verified_direction: +Y (left)
+  B:
+    name: B
+    position_m: [0.3567956444, 0.2712348365, 0.4840699409]
+    quaternion_xyzw: [-0.2215443007, 0.6575108951, 0.2299413849, 0.6824401111]
+    joint_values_rad: [0.65, 1.4, -1.5, 0.0, 0.15, 0.0]
+    position_error_m: 0.0
+    rotation_error_rad: 0.0
+    urdf_fk_verified_direction: +X (nearest named axis)
+suggested_obstacle_midpoint_m: [0.2054028008, 0.3580777478, 0.4840699409]

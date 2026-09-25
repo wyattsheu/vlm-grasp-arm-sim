@@ -1,0 +1,7 @@
+{
+  "name": "inserted_horizontal_bar",
+  "center_m": [0.30, 0.0, 0.48],
+  "size_m": [0.42, 0.06, 0.06],
+  "parked_center_m": [2.0, 2.0, 0.48],
+  "color_rgb": [0.90, 0.08, 0.08]
+}

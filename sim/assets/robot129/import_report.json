@@ -1,0 +1,47 @@
+{
+  "status": "PASS",
+  "usd_path": "/mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913/sim/assets/robot129/robot129/robot129.usda",
+  "prim_count": 69,
+  "revolute_joints": [
+    "/robot129/Physics/joint1",
+    "/robot129/Physics/joint2",
+    "/robot129/Physics/joint3",
+    "/robot129/Physics/joint4",
+    "/robot129/Physics/joint5",
+    "/robot129/Physics/joint6"
+  ],
+  "prismatic_joints": [
+    "/robot129/Physics/joint7",
+    "/robot129/Physics/joint8"
+  ],
+  "settings": {
+    "urdf_path": "/mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913/ros2_ws/src/robot129_description/urdf/robot129.urdf",
+    "usd_path": "/mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913/sim/assets/robot129",
+    "merge_fixed_joints": false,
+    "merge_mesh": false,
+    "debug_mode": false,
+    "collision_from_visuals": false,
+    "collision_type": "Convex Hull",
+    "allow_self_collision": false,
+    "ros_package_paths": [
+      {
+        "robot129_description": "/mnt/HDD4/wyattsheu/handoff/robot129_pro6000_sim_20260913/ros2_ws/src/robot129_description"
+      }
+    ],
+    "robot_type": "Default",
+    "fix_base": true,
+    "link_density": null,
+    "joint_drive_type": "force",
+    "joint_target_type": "position",
+    "override_joint_stiffness": {
+      "joint[1-6]": 800.0,
+      "joint[78]": 2000.0
+    },
+    "override_joint_damping": {
+      "joint[1-6]": 80.0,
+      "joint[78]": 100.0
+    },
+    "run_asset_transformer": false,
+    "run_multi_physics_conversion": true
+  }
+}

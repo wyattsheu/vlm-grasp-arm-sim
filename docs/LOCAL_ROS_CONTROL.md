@@ -100,6 +100,10 @@ bash tools/robot129_ros.sh topic echo /robot129_sim/joint_states --once
 
 ## 5. 寫自己的 ROS 2 node
 
+只需要「丟六軸角度／開合夾爪」這種最小介面，不想自己處理 ROS publisher／feedback，
+直接用 `tools/robot129_control_api.py`（`set_joint_positions` / `open_gripper` / `close_gripper`），
+見 [`docs/CONTROL_API_FOR_SENIOR.md`](CONTROL_API_FOR_SENIOR.md)。以下是自己寫 node 時的環境與參考範例。
+
 進入已隔離且 source 完成的互動 shell：
 
 ```bash

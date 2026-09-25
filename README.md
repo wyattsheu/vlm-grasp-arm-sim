@@ -4,6 +4,9 @@
 
 初次學習請從 [`docs/BEGINNER_TUTORIAL.md`](docs/BEGINNER_TUTORIAL.md) 開始；它使用目前已建好的系統，不會要求重新安裝 Isaac Sim。
 
+若只想把外部算法的六軸／夾爪輸出接進來測試，不需要處理 ROS／Isaac 細節，見
+[`docs/CONTROL_API_FOR_SENIOR.md`](docs/CONTROL_API_FOR_SENIOR.md)（`set_joint_positions` / `open_gripper` / `close_gripper`）。
+
 目前可以直接做：
 
 - 驗證交接包完整性。

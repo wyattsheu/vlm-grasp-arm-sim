@@ -1,0 +1,44 @@
+# Demo sequence for tools/send_joint_cmd.py --sequence (docs/dev_guide_paper_core_and_
+# dashboard_plan.md §8 Phase 3 / demo scenario `joints`): sweeps each of the 6 arm joints
+# individually away from HOME (so each axis's motion is visibly isolated, not mixed with
+# the others), then drives to the A/B demo poses (research/configs/demo/ab_poses.yaml,
+# written by research/scripts/select_demo_poses.py) to show the gripper physically
+# changing orientation -- up at A, left at B.
+#
+# Sweep targets are authored (chosen to be clearly different from HOME while staying
+# safely inside each joint's URDF limit -- see tools/send_joint_cmd.py's
+# JOINT_LIMITS_RAD), not derived from any measurement.
+steps:
+  - name: home
+    joints_rad: [0.0, 1.20, -1.25, 0.0, 0.15, 0.0]
+    duration_s: 2.0
+
+  - name: joint1_sweep
+    joints_rad: [1.0, 1.20, -1.25, 0.0, 0.15, 0.0]
+    duration_s: 2.5
+  - name: joint2_sweep
+    joints_rad: [0.0, 2.20, -1.25, 0.0, 0.15, 0.0]
+    duration_s: 2.5
+  - name: joint3_sweep
+    joints_rad: [0.0, 1.20, -2.20, 0.0, 0.15, 0.0]
+    duration_s: 2.5
+  - name: joint4_sweep
+    joints_rad: [0.0, 1.20, -1.25, 1.00, 0.15, 0.0]
+    duration_s: 2.5
+  - name: joint5_sweep
+    joints_rad: [0.0, 1.20, -1.25, 0.0, -0.90, 0.0]
+    duration_s: 2.5
+  - name: joint6_sweep
+    joints_rad: [0.0, 1.20, -1.25, 0.0, 0.15, 1.50]
+    duration_s: 2.5
+
+  - name: home_return
+    joints_rad: [0.0, 1.20, -1.25, 0.0, 0.15, 0.0]
+    duration_s: 2.5
+
+  - name: A_gripper_up
+    from_ab_poses: A
+    duration_s: 3.0
+  - name: B_gripper_left
+    from_ab_poses: B
+    duration_s: 3.0

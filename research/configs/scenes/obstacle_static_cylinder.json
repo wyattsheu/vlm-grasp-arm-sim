@@ -1,0 +1,16 @@
+{
+  "schema_version": "scene_manifest_v1",
+  "_provenance": "static_cylinder demo scenario (docs/dev_guide_paper_core_and_dashboard_plan.md §8): pairs with `--scene dynamic_stick --stick none --scene-manifest <this file>` -- same contact-sensor-and-camera-wired scene the swinging stick uses, but with a STATIC obstacle instead, to test reactive.py's live ESDF avoidance against something that doesn't move. Placed at the swinging stick's own centerline (STICK_CENTER_X=0.30, y=0.0 -- the middle of the stick's +-0.22m sweep in sim/scripts/run_robot129_ros_webrtc.py) so it blocks the same central corridor the stick would, for a fair comparison between the two scenarios. Deliberately NOT added to any planner's known geometry (plan_grasp.py / reactive.py's cuboid list) -- same rule the stick follows -- only visible via live depth. Radius/height/xy are authored for the demo, not measured; verify camera visibility with a real render before relying on this exact placement (see the dev guide's §5.3.1 for how to iterate on a manifest).",
+  "objects": [
+    {
+      "id": "static_cylinder",
+      "kind": "primitive_cylinder",
+      "physics": "static",
+      "xy_m": [0.30, 0.0],
+      "z_m": 0.175,
+      "radius_m": 0.035,
+      "height_m": 0.35,
+      "color_rgb": [0.85, 0.35, 0.10]
+    }
+  ]
+}

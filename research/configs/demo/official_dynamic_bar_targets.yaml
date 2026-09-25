@@ -1,0 +1,11 @@
+# FK-verified targets on opposite sides of the robot for the dynamic-bar demo.
+# Execution alternates LEFT <-> RIGHT six times before the bar is inserted.
+waypoints:
+  - name: LEFT
+    position_m: [0.162406, 0.417727, 0.484070]
+    quaternion_xyzw: [-0.3917649, 0.5726454, 0.4066159, 0.5943577]
+    joint_values_rad: [1.2, 1.4, -1.5, 0.0, 0.15, 0.0]
+  - name: RIGHT
+    position_m: [0.162402, -0.417728, 0.484070]
+    quaternion_xyzw: [0.3917688, 0.5726427, -0.4066242, 0.5943520]
+    joint_values_rad: [-1.2, 1.4, -1.5, 0.0, 0.15, 0.0]

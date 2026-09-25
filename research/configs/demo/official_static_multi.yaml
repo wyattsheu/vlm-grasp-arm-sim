@@ -1,0 +1,19 @@
+# FK-derived pinch-center poses; execution order is A -> B -> C -> D -> A.
+# A/B straddle the cone; C is high and behind it; D is low on its right.
+waypoints:
+  - name: A_left
+    position_m: [0.05400996, 0.44492066, 0.48406994]
+    quaternion_xyzw: [-0.46010262, 0.51933422, 0.47754474, 0.53902557]
+    joint_values_rad: [1.45, 1.4, -1.5, 0.0, 0.15, 0.0]
+  - name: B_right
+    position_m: [0.35679564, 0.27123484, 0.48406994]
+    quaternion_xyzw: [-0.22154430, 0.65751090, 0.22994138, 0.68244011]
+    joint_values_rad: [0.65, 1.4, -1.5, 0.0, 0.15, 0.0]
+  - name: C_high_behind
+    position_m: [0.22465678, 0.15369539, 0.63009963]
+    quaternion_xyzw: [-0.15867252, 0.51295138, 0.24930373, 0.80594762]
+    joint_values_rad: [0.6, 1.0, -1.5, 0.0, 0.15, 0.0]
+  - name: D_low
+    position_m: [0.38625192, 0.26424509, 0.20837524]
+    quaternion_xyzw: [-0.25877171, 0.83654878, 0.14271153, 0.46136402]
+    joint_values_rad: [0.6, 1.6, -1.1, 0.0, 0.15, 0.0]

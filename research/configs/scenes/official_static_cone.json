@@ -1,0 +1,13 @@
+{
+  "schema_version": "scene_manifest_v1",
+  "objects": [{
+    "id": "official_demo_red_cone",
+    "kind": "primitive_cone",
+    "physics": "static",
+    "xy_m": [0.20, 0.39],
+    "z_m": 0.25,
+    "radius_m": 0.06,
+    "height_m": 0.50,
+    "color_rgb": [0.92, 0.06, 0.05]
+  }]
+}

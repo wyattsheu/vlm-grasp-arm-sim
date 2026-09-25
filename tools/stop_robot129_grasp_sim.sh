@@ -5,10 +5,19 @@
 # can return success while the actual GPU process survives. This stop script therefore
 # always also matches on the script's command line as a second, independent kill path,
 # and only reports "stopped" once nothing matching is left, not just after signalling.
+#
+# 2026-09-24 real bug, found live: the pattern used to be just
+# "sim/scripts/run_robot129_ros_webrtc.py --bundle $root", which is a substring of BOTH
+# this script's own --record-only invocation AND start_robot129_ros_webrtc.sh's
+# --livestream invocation (same underlying python script, different flags) -- so calling
+# THIS stop script also killed a live, independently-started WebRTC session that had
+# nothing to do with the headless one this script is meant to manage. Narrowed to
+# require --record-only (only start_robot129_grasp_sim.sh's own invocation has that
+# flag) so this can no longer cross-kill a --livestream session.
 set -uo pipefail
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 state="$root/out/grasp_motion/live"
-pattern="sim/scripts/run_robot129_ros_webrtc.py --bundle $root"
+pattern="sim/scripts/run_robot129_ros_webrtc.py --bundle $root --device cuda:0 --record-only"
 
 if [[ -f "$state/server.pid" ]]; then
   pid="$(cat "$state/server.pid")"

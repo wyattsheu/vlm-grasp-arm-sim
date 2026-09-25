@@ -10,6 +10,17 @@ ros2_ws/src/external/
 # actually use are committed under ros2_ws/src/robot129_description/)
 robot/vendor/
 
+# Real Thor host SSH/connection info -- never push, even to a private repo
+# (see README's 2026-09-20 push-scope table)
+deployment/
+
+# Reference copies of other projects with unconfirmed license status
+references/upstream/
+
+# Learning materials for this workspace, not core sim/robot code
+lessons/
+tutorials/
+
 # Run outputs: recordings, logs, VLM response caches, execution reports --
 # regenerated every run, not source
 out/

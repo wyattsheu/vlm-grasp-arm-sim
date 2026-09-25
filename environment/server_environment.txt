@@ -1,5 +1,5 @@
 Robot 129 PRO 6000 server environment inventory
-captured_utc=2026-09-13T15:26:38Z
+captured_utc=2026-09-24T17:51:34Z
 
 [architecture]
 x86_64
@@ -38,12 +38,12 @@ NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition, 97887 MiB, 580.126.09
 
 [memory]
                total        used        free      shared  buff/cache   available
-Mem:           251Gi        43Gi       6.7Gi       7.1Gi       210Gi       207Gi
-Swap:          8.0Gi       486Mi       7.5Gi
+Mem:           251Gi        34Gi        12Gi       1.0Gi       208Gi       216Gi
+Swap:          8.0Gi       926Mi       7.1Gi
 
 [workspace-disk]
 Filesystem      Size  Used Avail Use% Mounted on
-/dev/sdd1        28T   14T   12T  54% /mnt/HDD4
+/dev/sdd1        28T   15T   12T  57% /mnt/HDD4
 
 [python]
 /usr/bin/python3
@@ -55,7 +55,7 @@ uv 0.12.11 (x86_64-unknown-linux-gnu)
 
 [docker]
 Docker version 28.5.1, build e180ab8
-docker daemon UNAVAILABLE to current user
+daemon_version=28.5.1
 
 [apptainer-singularity]
 apptainer version 1.4.5
